@@ -1,0 +1,33 @@
+<diagram program="umletino" version="15.1"><zoom_level>10</zoom_level><element><id>UMLClass</id><coordinates><x>820</x><y>10</y><w>240</w><h>110</h></coordinates><panel_attributes>&lt;&lt;class&gt;&gt;
+RadiationData::RadiationField
+--
+--
++ get_channels(): [String, VoxelBuffer][]
++ get_typename(): String
++ add_channel(name: String): VoxelBuffer
++ get_channel_names(): String[]</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>790</x><y>230</y><w>140</w><h>30</h></coordinates><panel_attributes>CartesianRadiationField</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>950</x><y>230</y><w>140</w><h>30</h></coordinates><panel_attributes>PolarRadiationField</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>850</x><y>110</y><w>110</w><h>140</h></coordinates><panel_attributes>lt=&lt;&lt;-</panel_attributes><additional_attributes>90;10;90;70;10;70;10;120</additional_attributes></element><element><id>Relation</id><coordinates><x>930</x><y>110</y><w>110</w><h>140</h></coordinates><panel_attributes>lt=&lt;&lt;-</panel_attributes><additional_attributes>10;10;10;70;90;70;90;120</additional_attributes></element><element><id>UMLClass</id><coordinates><x>80</x><y>10</y><w>140</w><h>110</h></coordinates><panel_attributes>&lt;&lt;class&gt;&gt;
+RadiationData::IVoxel
+--
+--
++ get_data(): Any
++ set_data(data: Any)
++ get_type(): String</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>60</x><y>110</y><w>110</w><h>140</h></coordinates><panel_attributes>lt=&lt;&lt;-</panel_attributes><additional_attributes>90;10;90;70;10;70;10;120</additional_attributes></element><element><id>Relation</id><coordinates><x>140</x><y>110</y><w>110</w><h>140</h></coordinates><panel_attributes>lt=&lt;&lt;-</panel_attributes><additional_attributes>10;10;10;70;90;70;90;120</additional_attributes></element><element><id>UMLClass</id><coordinates><x>0</x><y>230</y><w>140</w><h>30</h></coordinates><panel_attributes>ScalarVoxel&lt;T&gt;</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>160</x><y>230</y><w>140</w><h>30</h></coordinates><panel_attributes>HistogramVoxel</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>210</x><y>60</y><w>200</w><h>40</h></coordinates><panel_attributes>lt=&lt;&lt;&lt;&lt;&lt;-
+m1=1
+m2=0..*</panel_attributes><additional_attributes>180;10;10;10</additional_attributes></element><element><id>UMLClass</id><coordinates><x>390</x><y>10</y><w>280</w><h>110</h></coordinates><panel_attributes>&lt;&lt;class&gt;&gt;
+RadiationData::VoxelBuffer
+--
+--
++ add_layer&lt;T&gt;(name: String)
++ get_voxel_flat(name: String, idx: Int): IVoxel
++ get_layer_unit(name: String): String
++ get_layer(name: String): Bytes[]</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>660</x><y>60</y><w>180</w><h>40</h></coordinates><panel_attributes>lt=&lt;&lt;&lt;&lt;&lt;-
+m1=1
+m2=0..*</panel_attributes><additional_attributes>160;10;10;10</additional_attributes></element><element><id>Relation</id><coordinates><x>440</x><y>110</y><w>110</w><h>140</h></coordinates><panel_attributes>lt=&lt;&lt;-</panel_attributes><additional_attributes>90;10;90;70;10;70;10;120</additional_attributes></element><element><id>Relation</id><coordinates><x>520</x><y>110</y><w>110</w><h>140</h></coordinates><panel_attributes>lt=&lt;&lt;-</panel_attributes><additional_attributes>10;10;10;70;90;70;90;120</additional_attributes></element><element><id>UMLClass</id><coordinates><x>540</x><y>230</y><w>140</w><h>30</h></coordinates><panel_attributes>PolarSegmentsBuffer</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>380</x><y>230</y><w>140</w><h>30</h></coordinates><panel_attributes>VoxelGridBuffer
+</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>420</x><y>450</y><w>240</w><h>100</h></coordinates><panel_attributes>&lt;&lt;class&gt;&gt;
+RadiationData::FieldStoreV1
+--
+--
++ store(field, metadata, file)
++ load(file): RadiationField
++ get_metadata(file): Metadata</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>650</x><y>60</y><w>530</w><h>480</h></coordinates><panel_attributes>lt=-
+m1=                                                          stores and loads</panel_attributes><additional_attributes>10;450;510;450;510;10;410;10</additional_attributes></element></diagram>
