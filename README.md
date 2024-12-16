@@ -4,9 +4,10 @@ This Repository holds the Fileformat and API according to the Paper: "RadField3D
 The aim of this library is, to provide a simple to use API for a structured, binary file format, that can store all relevant information from a three dimensional radiation field calculated by applications that use algorithms like Monte-Carlo radiation transport simulations. Such a binary file format is useful, when one needs to process a huge amount of radiation field files like when training a neural network. With that use-case in mind, RadFiled3D also provides a python interface with a pyTorch integration.
 
 ## Building and Installing
-You can build and install this library and python module from source by using CMake and a C++ compiler. The CMake Project will be built automatically, but will take some time.
+You can build and install this library and python module from source by using CMake and a C++ compiler. The CMake Project will be 
+built automatically, but will take some time.
 
-### Prequisites
+### Prerequisites
 - C++ Compiler (Tested with MSVC for Windows and g++ for Linux)
 - CMake >= 3.30
 - Python >= 3.11
@@ -72,6 +73,42 @@ FieldStore.store(field, metadata, "test01.rf3", StoreVersion.V1)
 # load data
 field2 = FieldStore.load("test01.rf3")
 metadata2 = FieldStore.load_metadata("test01.rf3")
+```
+
+### Integrating with pyTorch
+RadFiled3D comes with a submodule at `RadFiled3D.pytorch`. This module provides some dataset classes to support the usage. Datasets can be loaded from folders or .zip-Files.
+```python
+from RadFiled3D.pytorch import MetadataLoadMode, CartesianFieldSingleLayerDataset, DatasetBuilder
+from RadFiled3D.pytorch.helpers import load_tensor_from_layer
+from RadFiled3D.RadFiled3D import VoxelGrid
+from torch import Tensor
+
+
+# Extend one of the provided dataset classes to match the output to the current needs
+# The argument type of 'field' may vary depending on the dataset type between RadiationField (Whole field), VoxelGridBuffer (Channel), VoxelGrid (Layer) and Voxel (Single Voxel)
+class MyLayerDataset(CartesianFieldSingleLayerDataset):
+    def transform_field(self, field: VoxelGrid) -> Tensor:
+        return load_tensor_from_layer(field)
+
+
+# Pass the dataset class and other options to the DatasetBuilder
+builder = DatasetBuilder(
+    "./test_dataset.zip",
+    train_ratio=0.7,
+    val_ratio=0.15,
+    test_ratio=0.15,
+    dataset_class=MyLayerDataset
+)
+# Build and finalize the training dataset
+train_ds = builder.build_train_dataset()
+# define the channel and layer to load from each field and spare out all other data
+train_ds.set_channel_and_layer("test_channel", "test_layer")
+# Load the metadata header for each radiation field, but not the dynamic metadata to speed up the loading
+train_ds.metadata_load_mode = MetadataLoadMode.HEADER
+
+# iterate over the dataset
+for field, metadata in train_ds:
+    pass
 ```
 
 ## Dependencies

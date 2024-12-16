@@ -1602,7 +1602,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
 		    })
             .def("access_voxel_flat", &FieldAccessor::accessVoxelRawFlat);
 
-        py::class_<CartesianFieldAccessor, std::shared_ptr<CartesianFieldAccessor>, RadFiled3D::Storage::FieldAccessor>(m, "CartesianFieldAccessor")
+        py::class_<Storage::CartesianFieldAccessor, std::shared_ptr<CartesianFieldAccessor>, RadFiled3D::Storage::FieldAccessor>(m, "CartesianFieldAccessor")
             .def("access_layer", &CartesianFieldAccessor::accessLayer)
             .def("access_channel", &CartesianFieldAccessor::accessChannel)
             .def("access_voxel", &CartesianFieldAccessor::accessVoxelRaw)
@@ -1612,7 +1612,17 @@ PYBIND11_MODULE(RadFiled3D, m) {
 			})
 		    .def("access_voxel_by_coord", &CartesianFieldAccessor::accessVoxelRawByCoord);
 
-		py::class_<PolarFieldAccessor, std::shared_ptr<PolarFieldAccessor>, RadFiled3D::Storage::FieldAccessor>(m, "PolarFieldAccessor")
+		py::class_<V1::CartesianFieldAccessor, std::shared_ptr<V1::CartesianFieldAccessor>, Storage::CartesianFieldAccessor>(m, "CartesianFieldAccessorV1")
+			.def("access_layer", &V1::CartesianFieldAccessor::accessLayer)
+			.def("access_channel", &V1::CartesianFieldAccessor::accessChannel)
+			.def("access_voxel", &V1::CartesianFieldAccessor::accessVoxelRaw)
+			.def("__repr__", [](const V1::CartesianFieldAccessor& a) {
+			    auto voxels = a.getVoxelCount();
+			    return std::string("<RadiationData.CartesianFieldAccessorV1 (voxels: ") + std::to_string(voxels) + std::string(")>");
+			})
+			.def("access_voxel_by_coord", &V1::CartesianFieldAccessor::accessVoxelRawByCoord);
+
+		py::class_<Storage::PolarFieldAccessor, std::shared_ptr<Storage::PolarFieldAccessor>, Storage::FieldAccessor>(m, "PolarFieldAccessor")
 			.def("access_layer", &PolarFieldAccessor::accessLayer)
 			.def("access_voxel", &PolarFieldAccessor::accessVoxelRaw)
 			.def("__repr__", [](const PolarFieldAccessor& a) {
@@ -1620,6 +1630,15 @@ PYBIND11_MODULE(RadFiled3D, m) {
 			    return std::string("<RadiationData.PolarFieldAccessor (voxels: ") + std::to_string(voxels) + std::string(")>");
 		    })
 			.def("access_voxel_by_coord", &PolarFieldAccessor::accessVoxelRawByCoord);
+
+		py::class_<V1::PolarFieldAccessor, std::shared_ptr<V1::PolarFieldAccessor>, Storage::PolarFieldAccessor>(m, "PolarFieldAccessorV1")
+			.def("access_layer", &V1::PolarFieldAccessor::accessLayer)
+			.def("access_voxel", &V1::PolarFieldAccessor::accessVoxelRaw)
+			.def("__repr__", [](const V1::PolarFieldAccessor& a) {
+			    auto voxels = a.getVoxelCount();
+			    return std::string("<RadiationData.PolarFieldAccessorV1 (voxels: ") + std::to_string(voxels) + std::string(")>");
+			})
+			.def("access_voxel_by_coord", &V1::PolarFieldAccessor::accessVoxelRawByCoord);
 
         py::class_<Storage::FieldStore>(m, "FieldStore")
             .def_static("init_store_instance", &Storage::FieldStore::init_store_instance)
