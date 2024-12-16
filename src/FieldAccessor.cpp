@@ -13,6 +13,152 @@ using namespace RadFiled3D::Storage;
 using namespace RadFiled3D::Storage::FiledTypes;
 
 
+std::vector<char> RadFiled3D::Storage::V1::FileParser::SerializeChannelsLlayersOffsets(const std::map<std::string, AccessorTypes::ChannelStructure>& channels_layers_offsets)
+{
+	std::vector<char> channel_layer_offsets_data;
+
+	for (auto& channel : channels_layers_offsets) {
+		channel_layer_offsets_data.insert(channel_layer_offsets_data.end(), channel.first.begin(), channel.first.end());
+		channel_layer_offsets_data.push_back('\0');
+		channel_layer_offsets_data.insert(channel_layer_offsets_data.end(), (char*)&channel.second.channel_block.offset, (char*)&channel.second.channel_block.offset + sizeof(size_t));
+		channel_layer_offsets_data.insert(channel_layer_offsets_data.end(), (char*)&channel.second.channel_block.size, (char*)&channel.second.channel_block.size + sizeof(size_t));
+
+		size_t layer_count = channel.second.layers.size();
+		channel_layer_offsets_data.insert(channel_layer_offsets_data.end(), (char*)&layer_count, (char*)&layer_count + sizeof(size_t));
+
+		for (auto& layer : channel.second.layers) {
+			size_t voxel_header_data_size = layer.second.get_voxel_header_data_size();
+			channel_layer_offsets_data.insert(channel_layer_offsets_data.end(), layer.first.begin(), layer.first.end());
+			channel_layer_offsets_data.push_back('\0');
+			channel_layer_offsets_data.insert(channel_layer_offsets_data.end(), (char*)&layer.second.offset, (char*)&layer.second.offset + sizeof(size_t));
+			channel_layer_offsets_data.insert(channel_layer_offsets_data.end(), (char*)&layer.second.size, (char*)&layer.second.size + sizeof(size_t));
+			channel_layer_offsets_data.insert(channel_layer_offsets_data.end(), (char*)&layer.second.dtype, (char*)&layer.second.dtype + sizeof(Typing::DType));
+			channel_layer_offsets_data.insert(channel_layer_offsets_data.end(), (char*)&layer.second.elements_per_voxel, (char*)&layer.second.elements_per_voxel + sizeof(size_t));
+			channel_layer_offsets_data.insert(channel_layer_offsets_data.end(), (char*)&voxel_header_data_size, (char*)&voxel_header_data_size + sizeof(size_t));
+			if (voxel_header_data_size > 0)
+				channel_layer_offsets_data.insert(channel_layer_offsets_data.end(), (char*)layer.second.get_voxel_header_data(), (char*)layer.second.get_voxel_header_data() + voxel_header_data_size);
+		}
+	}
+	return channel_layer_offsets_data;
+}
+
+std::map<std::string, AccessorTypes::ChannelStructure> RadFiled3D::Storage::V1::FileParser::DeserializeChannelsLayersOffsets(const std::vector<char>& data) {
+	std::map<std::string, AccessorTypes::ChannelStructure> channels_layers_offsets = std::map<std::string, AccessorTypes::ChannelStructure>();
+	size_t offset = 0;
+	const size_t min_bytes_per_channel = sizeof(size_t) * 3 + sizeof(char);
+	const size_t min_remaining_size = (data.size() >= min_bytes_per_channel) ? data.size() - min_bytes_per_channel : 0;
+	while (offset < min_remaining_size) {
+		std::string channel_name = std::string(data.data() + offset);
+		if (offset + channel_name.size() + 1 + sizeof(size_t) * 3 > min_remaining_size)
+			break;
+		offset += channel_name.size() + 1;
+		size_t channel_offset = *(size_t*)(data.data() + offset);
+		offset += sizeof(size_t);
+		size_t channel_size = *(size_t*)(data.data() + offset);
+		offset += sizeof(size_t);
+		size_t layer_count = *(size_t*)(data.data() + offset);
+		offset += sizeof(size_t);
+
+		std::map<std::string, AccessorTypes::TypedMemoryBlockDefinition> layers;
+		while (offset < data.size() && layers.size() < layer_count) {
+			std::string layer_name = std::string(data.data() + offset);
+			offset += layer_name.size() + 1;
+			size_t layer_offset = *(size_t*)(data.data() + offset);
+			offset += sizeof(size_t);
+			size_t layer_size = *(size_t*)(data.data() + offset);
+			offset += sizeof(size_t);
+			Typing::DType dtype = *(Typing::DType*)(data.data() + offset);
+			offset += sizeof(Typing::DType);
+			size_t elements_per_voxel = *(size_t*)(data.data() + offset);
+			offset += sizeof(size_t);
+			size_t voxel_header_data_size = *(size_t*)(data.data() + offset);
+			offset += sizeof(size_t);
+
+			AccessorTypes::TypedMemoryBlockDefinition layer_block(layer_offset, layer_size, dtype, elements_per_voxel);
+			if (voxel_header_data_size > 0)
+				layer_block.set_voxel_header_data((char*)(data.data() + offset), voxel_header_data_size);
+			offset += voxel_header_data_size;
+			layers[layer_name] = layer_block;
+		}
+
+		AccessorTypes::ChannelStructure channel_block(
+			AccessorTypes::MemoryBlockDefinition(channel_offset, channel_size),
+			layers
+		);
+		channels_layers_offsets[channel_name] = channel_block;
+	}
+	return channels_layers_offsets;
+}
+
+std::vector<char> RadFiled3D::Storage::V1::CartesianFieldAccessor::SerializationData::serialize_additional_data() const {
+	return FileParser::SerializeChannelsLlayersOffsets(this->channels_layers_offsets);
+}
+
+void RadFiled3D::Storage::V1::CartesianFieldAccessor::SerializationData::deserialize_additional_data(const std::vector<char>& data) {
+	this->channels_layers_offsets = FileParser::DeserializeChannelsLayersOffsets(data);
+}
+
+std::vector<char> RadFiled3D::Storage::FieldAccessor::Serialize(std::shared_ptr<FieldAccessor> accessor)
+{
+	FieldAccessor::SerializationData* sdata = accessor->generateSerializationBuffer();
+	std::vector<char> additional_data = sdata->serialize_additional_data();
+	std::vector<char> serialized_accessor;
+
+	if (sdata->field_type == FieldType::Cartesian) {
+		serialized_accessor.resize(sizeof(V1::CartesianFieldAccessor::SerializationData) + additional_data.size());
+		memcpy((char*)serialized_accessor.data(), sdata, sizeof(V1::CartesianFieldAccessor::SerializationData));
+	}
+	else if (sdata->field_type == FieldType::Polar) {
+		serialized_accessor.resize(sizeof(V1::PolarFieldAccessor::SerializationData) + additional_data.size());
+		memcpy((char*)serialized_accessor.data(), sdata, sizeof(V1::PolarFieldAccessor::SerializationData));
+	}
+	else {
+		throw std::runtime_error("Unsupported field type");
+	}
+
+	memcpy((char*)serialized_accessor.data() + (serialized_accessor.size() - additional_data.size()), additional_data.data(), additional_data.size());
+	delete sdata;
+	return serialized_accessor;
+}
+
+std::shared_ptr<FieldAccessor> RadFiled3D::Storage::FieldAccessor::Deserialize(const std::vector<char>& buffer)
+{
+	FieldAccessor::SerializationData sdata_header;
+	memcpy((char*)&sdata_header, buffer.data(), sizeof(FieldAccessor::SerializationData));
+	std::shared_ptr<FieldAccessor> accessor;
+	if (sdata_header.store_version == StoreVersion::V1) {
+		if (sdata_header.field_type == FieldType::Cartesian) {
+			V1::CartesianFieldAccessor::SerializationData sdata;
+			memcpy(((char*)&sdata), buffer.data(), sizeof(V1::CartesianFieldAccessor::SerializationData));
+
+			size_t remaining_size = buffer.size() - sizeof(V1::CartesianFieldAccessor::SerializationData);
+			std::vector<char> additional_data(remaining_size);
+			memcpy(additional_data.data(), buffer.data() + sizeof(V1::CartesianFieldAccessor::SerializationData), remaining_size);
+			sdata.deserialize_additional_data(additional_data);
+			return std::static_pointer_cast<FieldAccessor>(std::make_shared<V1::CartesianFieldAccessor>(sdata));
+		}
+		else if (sdata_header.field_type == FieldType::Polar) {
+			V1::PolarFieldAccessor::SerializationData sdata;
+			memcpy(((char*)&sdata), buffer.data(), sizeof(V1::PolarFieldAccessor::SerializationData));
+
+			size_t remaining_size = buffer.size() - sizeof(V1::PolarFieldAccessor::SerializationData);
+			std::vector<char> additional_data(remaining_size);
+			memcpy(additional_data.data(), buffer.data() + sizeof(V1::PolarFieldAccessor::SerializationData), remaining_size);
+			sdata.deserialize_additional_data(additional_data);
+			return std::static_pointer_cast<FieldAccessor>(std::make_shared<V1::PolarFieldAccessor>(sdata));
+		}
+		else {
+			throw std::runtime_error("Unsupported field type");
+		}
+	}
+	else {
+		throw std::runtime_error("Unsupported store version");
+	}
+
+	throw std::runtime_error("Unsupported field type");
+}
+
+
 StoreVersion RadFiled3D::Storage::FieldAccessor::getStoreVersion(std::istream& buffer)
 {
 	VersionHeader version;
@@ -195,10 +341,30 @@ void RadFiled3D::Storage::V1::CartesianFieldAccessor::initialize(std::istream& b
 RadFiled3D::Storage::V1::CartesianFieldAccessor::CartesianFieldAccessor()
 	: RadFiled3D::Storage::FieldAccessor(FieldType::Cartesian),
 	  RadFiled3D::Storage::CartesianFieldAccessor(FieldType::Cartesian),
-	  RadFiled3D::Storage::V1::FileParser(FieldType::Cartesian),
-	  field_dimensions(glm::vec3(0)),
-	  voxel_dimensions(glm::vec3(0.f))
+	  RadFiled3D::Storage::V1::FileParser(FieldType::Cartesian)
 {
+	this->field_dimensions = glm::vec3(0);
+	this->voxel_dimensions = glm::vec3(0.f);
+	this->store_version = StoreVersion::V1;
+}
+
+RadFiled3D::Storage::V1::CartesianFieldAccessor::CartesianFieldAccessor(const SerializationData& data)
+	: RadFiled3D::Storage::FieldAccessor(FieldType::Cartesian),
+	  RadFiled3D::Storage::CartesianFieldAccessor(FieldType::Cartesian),
+	  RadFiled3D::Storage::V1::FileParser(FieldType::Cartesian)
+{
+	if (data.store_version != StoreVersion::V1)
+		throw RadiationFieldStoreException("Invalid store version");
+
+	this->metadata_fileheader_size = data.metadata_fileheader_size;
+	this->voxel_count = data.voxel_count;
+
+	this->field_dimensions = data.field_dimensions;
+	this->voxel_dimensions = data.voxel_dimensions;
+	this->store_version = StoreVersion::V1;
+	this->channels_layers_offsets = data.channels_layers_offsets;
+	this->default_grid = std::make_unique<VoxelGrid>(this->field_dimensions, this->voxel_dimensions);
+	this->serializer = std::make_unique<BinayFieldBlockHandler>();
 }
 
 std::shared_ptr<IRadiationField> RadFiled3D::Storage::V1::CartesianFieldAccessor::accessField(std::istream& buffer) const
@@ -279,9 +445,28 @@ void RadFiled3D::Storage::V1::PolarFieldAccessor::initialize(std::istream& buffe
 RadFiled3D::Storage::V1::PolarFieldAccessor::PolarFieldAccessor()
 	: RadFiled3D::Storage::FieldAccessor(FieldType::Polar),
 	  RadFiled3D::Storage::PolarFieldAccessor(FieldType::Polar),
-	  RadFiled3D::Storage::V1::FileParser(FieldType::Polar),
-	  segments_counts(glm::uvec2(0))
+	  RadFiled3D::Storage::V1::FileParser(FieldType::Polar)
 {
+	this->segments_counts = glm::uvec2(0);
+	this->store_version = StoreVersion::V1;
+}
+
+RadFiled3D::Storage::V1::PolarFieldAccessor::PolarFieldAccessor(const SerializationData& data)
+	: RadFiled3D::Storage::FieldAccessor(FieldType::Polar),
+	  RadFiled3D::Storage::PolarFieldAccessor(FieldType::Polar),
+	  RadFiled3D::Storage::V1::FileParser(FieldType::Polar)
+{
+	if (data.store_version != StoreVersion::V1)
+		throw RadiationFieldStoreException("Invalid store version");
+
+	this->metadata_fileheader_size = data.metadata_fileheader_size;
+	this->voxel_count = data.voxel_count;
+
+	this->segments_counts = data.segments_counts;
+	this->store_version = StoreVersion::V1;
+	this->channels_layers_offsets = data.channels_layers_offsets;
+	this->default_segments = std::make_unique<PolarSegments>(this->segments_counts);
+	this->serializer = std::make_unique<BinayFieldBlockHandler>();
 }
 
 IVoxel* RadFiled3D::Storage::V1::PolarFieldAccessor::accessVoxelRaw(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const glm::uvec2& voxel_idx) const

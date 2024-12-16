@@ -755,7 +755,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
 
     py::class_<Storage::RadiationFieldMetadata, std::shared_ptr<Storage::RadiationFieldMetadata>>(m, "RadiationFieldMetadata");
 
-    py::class_<Storage::V1::RadiationFieldMetadata, std::shared_ptr<Storage::V1::RadiationFieldMetadata>>(m, "RadiationFieldMetadataV1")
+    py::class_<Storage::V1::RadiationFieldMetadata, std::shared_ptr<Storage::V1::RadiationFieldMetadata>, Storage::RadiationFieldMetadata>(m, "RadiationFieldMetadataV1")
         .def(py::init<Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Simulation, Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Software>())
         .def("get_header", &Storage::V1::RadiationFieldMetadata::get_header)
         .def("set_header", &Storage::V1::RadiationFieldMetadata::set_header)
@@ -1573,22 +1573,52 @@ PYBIND11_MODULE(RadFiled3D, m) {
         py::enum_<Storage::StoreVersion>(m, "StoreVersion")
             .value("V1", Storage::StoreVersion::V1);
 
-        py::class_<FieldAccessor, std::shared_ptr<FieldAccessor>>(m, "FieldAccessor")
+        py::class_<RadFiled3D::Storage::FieldAccessor, std::shared_ptr<FieldAccessor>>(m, "FieldAccessor")
+			.def(py::pickle(
+				[](std::shared_ptr<FieldAccessor> self) {
+                    return FieldAccessor::Serialize(self);
+				},
+                [](const std::vector<char>& bytes) {
+					return FieldAccessor::Deserialize(bytes);
+		    }))
             .def("get_field_type", &FieldAccessor::getFieldType)
             .def("access_field", &FieldAccessor::accessField)
             .def("get_store_version", &FieldAccessor::getStoreVersion)
             .def("get_voxel_count", &FieldAccessor::getVoxelCount)
+			.def("__repr__", [](const FieldAccessor& a) {
+                std::string field_type = "";
+				switch (a.getFieldType()) {
+				case FieldType::Cartesian:
+					field_type = "Cartesian";
+					break;
+				case FieldType::Polar:
+					field_type = "Polar";
+					break;
+				default:
+					field_type = "Unknown";
+					break;
+				}
+			    return std::string("<RadiationData.FieldAccessor (") + field_type + std::string(")>");
+		    })
             .def("access_voxel_flat", &FieldAccessor::accessVoxelRawFlat);
 
-        py::class_<CartesianFieldAccessor, std::shared_ptr<CartesianFieldAccessor>, FieldAccessor>(m, "CartesianFieldAccessor")
+        py::class_<CartesianFieldAccessor, std::shared_ptr<CartesianFieldAccessor>, RadFiled3D::Storage::FieldAccessor>(m, "CartesianFieldAccessor")
             .def("access_layer", &CartesianFieldAccessor::accessLayer)
             .def("access_channel", &CartesianFieldAccessor::accessChannel)
             .def("access_voxel", &CartesianFieldAccessor::accessVoxelRaw)
+			.def("__repr__", [](const CartesianFieldAccessor& a) {
+                auto voxels = a.getVoxelCount();
+			    return std::string("<RadiationData.CartesianFieldAccessor (voxels: ") + std::to_string(voxels) + std::string(")>");
+			})
 		    .def("access_voxel_by_coord", &CartesianFieldAccessor::accessVoxelRawByCoord);
 
-		py::class_<PolarFieldAccessor, std::shared_ptr<PolarFieldAccessor>, FieldAccessor>(m, "PolarFieldAccessor")
+		py::class_<PolarFieldAccessor, std::shared_ptr<PolarFieldAccessor>, RadFiled3D::Storage::FieldAccessor>(m, "PolarFieldAccessor")
 			.def("access_layer", &PolarFieldAccessor::accessLayer)
 			.def("access_voxel", &PolarFieldAccessor::accessVoxelRaw)
+			.def("__repr__", [](const PolarFieldAccessor& a) {
+			    auto voxels = a.getVoxelCount();
+			    return std::string("<RadiationData.PolarFieldAccessor (voxels: ") + std::to_string(voxels) + std::string(")>");
+		    })
 			.def("access_voxel_by_coord", &PolarFieldAccessor::accessVoxelRawByCoord);
 
         py::class_<Storage::FieldStore>(m, "FieldStore")

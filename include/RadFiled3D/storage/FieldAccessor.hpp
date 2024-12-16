@@ -31,6 +31,10 @@ namespace RadFiled3D {
 					return this->voxel_header_data.data();
 				}
 
+				size_t get_voxel_header_data_size() const {
+					return this->voxel_header_data.size();
+				}
+
 				Typing::DType dtype;
 				size_t elements_per_voxel;
 
@@ -67,11 +71,37 @@ namespace RadFiled3D {
 		*/
 		class FieldAccessor {
 			friend class RadFiled3D::Storage::FieldAccessorBuilder;
+		public:
+#pragma pack(push, 4)
+			struct SerializationData {
+				StoreVersion store_version;
+				FieldType field_type;
+				size_t metadata_fileheader_size;
+				size_t voxel_count;
+
+				SerializationData(StoreVersion store_version, FieldType field_type, size_t metadata_fileheader_size, size_t voxel_count)
+					: store_version(store_version), field_type(field_type), metadata_fileheader_size(metadata_fileheader_size), voxel_count(voxel_count) {};
+
+				SerializationData() {
+					this->store_version = StoreVersion::V1;
+					this->field_type = FieldType::Cartesian;
+					this->metadata_fileheader_size = 0;
+					this->voxel_count = 0;
+				}
+
+				virtual std::vector<char> serialize_additional_data() const {
+					return std::vector<char>();
+				}
+
+				virtual void deserialize_additional_data(const std::vector<char>& data) { }
+			};
+#pragma pack(pop)
 		private:
 			const FieldType field_type;
 		protected:
 			size_t metadata_fileheader_size;
 			size_t voxel_count = 0;
+			StoreVersion store_version;
 
 			/** Verify the buffer and set the read position to the beginning of the field.
 			* @param buffer The buffer to verify
@@ -88,6 +118,10 @@ namespace RadFiled3D {
 			/** Initializes the accessor from a template buffer. */
 			virtual void initialize(std::istream& buffer) = 0;
 		public:
+			static std::vector<char> Serialize(std::shared_ptr<FieldAccessor> accessor);
+
+			static std::shared_ptr<FieldAccessor> Deserialize(const std::vector<char>& buffer);
+
 			/** Access a field from a buffer and return a shared pointer to it
 			* @param buffer The buffer to access the field from
 			* @return A shared pointer to the field
@@ -142,11 +176,31 @@ namespace RadFiled3D {
 				IVoxel* voxel = this->accessVoxelRawFlat(buffer, channel_name, layer_name, voxel_idx);
 				return std::shared_ptr<VoxelT>((VoxelT*)voxel);
 			};
+
+			virtual SerializationData* generateSerializationBuffer() const = 0;
 		};
 
 		class CartesianFieldAccessor : virtual public RadFiled3D::Storage::FieldAccessor {
+		public:
+#pragma pack(push, 4)
+			struct SerializationData : public FieldAccessor::SerializationData {
+				glm::vec3 field_dimensions;
+				glm::vec3 voxel_dimensions;
+
+				SerializationData(StoreVersion store_version, FieldType field_type, size_t metadata_fileheader_size, size_t voxel_count, glm::vec3 field_dimensions, glm::vec3 voxel_dimensions)
+					: FieldAccessor::SerializationData(store_version, field_type, metadata_fileheader_size, voxel_count), field_dimensions(field_dimensions), voxel_dimensions(voxel_dimensions) {};
+
+				SerializationData() : FieldAccessor::SerializationData() {
+					this->field_dimensions = glm::vec3(0.0f);
+					this->voxel_dimensions = glm::vec3(0.0f);
+				}
+			};
+#pragma pack(pop)
 		protected:
-			CartesianFieldAccessor(FieldType field_type) : FieldAccessor(field_type) {};
+			glm::vec3 field_dimensions;
+			glm::vec3 voxel_dimensions;
+
+			CartesianFieldAccessor(FieldType field_type) : FieldAccessor(field_type), field_dimensions(glm::vec3(0.0f)), voxel_dimensions(glm::vec3(0.0f)) { };
 		public:
 			virtual IVoxel* accessVoxelRaw(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const glm::uvec3& voxel_idx) const = 0;
 			virtual IVoxel* accessVoxelRawByCoord(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const glm::vec3& voxel_pos) const = 0;
@@ -165,11 +219,30 @@ namespace RadFiled3D {
 				auto voxel = this->accessVoxelRawByCoord(buffer, channel_name, layer_name, voxel_pos);
 				return std::shared_ptr<VoxelT>((VoxelT*)voxel);
 			};
+
+			virtual SerializationData* generateSerializationBuffer() const override {
+				return new SerializationData(this->store_version, this->getFieldType(), this->metadata_fileheader_size, this->voxel_count, this->field_dimensions, this->voxel_dimensions);
+			}
 		};
 
 		class PolarFieldAccessor : virtual public RadFiled3D::Storage::FieldAccessor {
+		public:
+#pragma pack(push, 4)
+			struct SerializationData : public FieldAccessor::SerializationData {
+				glm::uvec2 segments_counts;
+
+				SerializationData(StoreVersion store_version, FieldType field_type, size_t metadata_fileheader_size, size_t voxel_count, glm::uvec2 segments_counts)
+					: FieldAccessor::SerializationData(store_version, field_type, metadata_fileheader_size, voxel_count), segments_counts(segments_counts) {};
+
+				SerializationData() : FieldAccessor::SerializationData() {
+					this->segments_counts = glm::uvec2(0);
+				}
+			};
+#pragma pack(pop)
 		protected:
-			PolarFieldAccessor(FieldType field_type) : FieldAccessor(field_type) {};
+			glm::uvec2 segments_counts;
+
+			PolarFieldAccessor(FieldType field_type) : FieldAccessor(field_type), segments_counts(glm::uvec2(0)) { };
 
 		public:
 			virtual IVoxel* accessVoxelRaw(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const glm::uvec2& voxel_idx) const = 0;
@@ -189,10 +262,18 @@ namespace RadFiled3D {
 				auto voxel = this->accessVoxelRawByCoord(buffer, channel_name, layer_name, voxel_pos);
 				return std::shared_ptr<VoxelT>((VoxelT*)voxel);
 			};
+
+			virtual SerializationData* generateSerializationBuffer() const override {
+				return new SerializationData(this->store_version, this->getFieldType(), this->metadata_fileheader_size, this->voxel_count, this->segments_counts);
+			}
 		};
 
 		namespace V1 {
 			class FileParser : virtual public RadFiled3D::Storage::FieldAccessor {
+			public:
+				static std::vector<char> SerializeChannelsLlayersOffsets(const std::map<std::string, AccessorTypes::ChannelStructure>& channels_layers_offsets);
+				static std::map<std::string, AccessorTypes::ChannelStructure> DeserializeChannelsLayersOffsets(const std::vector<char>& data);
+
 			protected:
 				std::unique_ptr<RadFiled3D::Storage::V1::BinayFieldBlockHandler> serializer;
 
@@ -211,15 +292,32 @@ namespace RadFiled3D {
 
 
 			class CartesianFieldAccessor : public RadFiled3D::Storage::CartesianFieldAccessor, public FileParser {
+			public:
+#pragma pack(push, 4)
+				struct SerializationData : public RadFiled3D::Storage::CartesianFieldAccessor::SerializationData {
+					std::map<std::string, AccessorTypes::ChannelStructure> channels_layers_offsets;
+
+					SerializationData(StoreVersion store_version, FieldType field_type, size_t metadata_fileheader_size, size_t voxel_count, glm::vec3 field_dimensions, glm::vec3 voxel_dimensions, std::map<std::string, AccessorTypes::ChannelStructure> channels_layers_offsets)
+						: RadFiled3D::Storage::CartesianFieldAccessor::SerializationData(store_version, field_type, metadata_fileheader_size, voxel_count, field_dimensions, voxel_dimensions), channels_layers_offsets(channels_layers_offsets) {};
+
+					SerializationData() : RadFiled3D::Storage::CartesianFieldAccessor::SerializationData() {
+						this->channels_layers_offsets = std::map<std::string, AccessorTypes::ChannelStructure>();
+					}
+
+					virtual std::vector<char> serialize_additional_data() const override;
+
+					virtual void deserialize_additional_data(const std::vector<char>& data) override;
+				};
+#pragma pack(pop)
 				friend class RadFiled3D::Storage::FieldAccessorBuilder;
 			protected:
-				glm::vec3 field_dimensions;
-				glm::vec3 voxel_dimensions;
 				std::unique_ptr<VoxelGrid> default_grid;
 
 				CartesianFieldAccessor();
 				virtual void initialize(std::istream& buffer) override;
 			public:
+				CartesianFieldAccessor(const SerializationData& data);
+
 				virtual IVoxel* accessVoxelRaw(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const glm::uvec3& voxel_idx) const override;
 				virtual IVoxel* accessVoxelRawByCoord(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const glm::vec3& voxel_pos) const override;
 
@@ -228,17 +326,42 @@ namespace RadFiled3D {
 				virtual std::shared_ptr<VoxelGrid> accessLayer(std::istream& buffer, const std::string& channel_name, const std::string& layer_name) const override;
 
 				virtual size_t getFieldDataOffset() const override;
+				virtual SerializationData* generateSerializationBuffer() const override {
+					return new SerializationData(this->store_version, this->getFieldType(), this->metadata_fileheader_size, this->voxel_count, this->field_dimensions, this->voxel_dimensions, this->channels_layers_offsets);
+				}
 			};
 
 			class PolarFieldAccessor : public RadFiled3D::Storage::PolarFieldAccessor, public FileParser {
+			public:
+#pragma pack(push, 4)
+				struct SerializationData : public RadFiled3D::Storage::PolarFieldAccessor::SerializationData {
+					std::map<std::string, AccessorTypes::ChannelStructure> channels_layers_offsets;
+
+					SerializationData(StoreVersion store_version, FieldType field_type, size_t metadata_fileheader_size, size_t voxel_count, glm::uvec2 segments_counts, std::map<std::string, AccessorTypes::ChannelStructure> channels_layers_offsets)
+						: RadFiled3D::Storage::PolarFieldAccessor::SerializationData(store_version, field_type, metadata_fileheader_size, voxel_count, segments_counts), channels_layers_offsets(channels_layers_offsets) {};
+
+					SerializationData() : RadFiled3D::Storage::PolarFieldAccessor::SerializationData() {
+						this->channels_layers_offsets = std::map<std::string, AccessorTypes::ChannelStructure>();
+					}
+
+					virtual std::vector<char> serialize_additional_data() const override {
+						return FileParser::SerializeChannelsLlayersOffsets(this->channels_layers_offsets);
+					}
+
+					virtual void deserialize_additional_data(const std::vector<char>& data) override {
+						this->channels_layers_offsets = FileParser::DeserializeChannelsLayersOffsets(data);
+					}
+				};
+#pragma pack(pop)
 				friend class RadFiled3D::Storage::FieldAccessorBuilder;
 			protected:
-				glm::uvec2 segments_counts;
 				std::unique_ptr<PolarSegments> default_segments;
 
 				PolarFieldAccessor();
 				virtual void initialize(std::istream& buffer) override;
 			public:
+				PolarFieldAccessor(const SerializationData& data);
+
 				virtual IVoxel* accessVoxelRaw(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const glm::uvec2& voxel_idx) const override;
 				virtual IVoxel* accessVoxelRawByCoord(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const glm::vec2& voxel_pos) const override;
 
@@ -246,6 +369,10 @@ namespace RadFiled3D {
 				virtual std::shared_ptr<PolarSegments> accessLayer(std::istream& buffer, const std::string& channel_name, const std::string& layer_name) const override;
 
 				virtual size_t getFieldDataOffset() const override;
+
+				virtual SerializationData* generateSerializationBuffer() const override {
+					return new SerializationData(this->store_version, this->getFieldType(), this->metadata_fileheader_size, this->voxel_count, this->segments_counts, this->channels_layers_offsets);
+				}
 			};
 		};
 

@@ -833,6 +833,15 @@ class FieldAccessor:
         """
         ...
 
+    def access_field(self, buffer: bytes) -> RadiationField:
+        """
+        Get a radiation field from a data buffer.
+
+        :param buffer: The buffer to load the radiation field from.
+        :return: The radiation field.
+        """
+        ...
+
 
 class CartesianFieldAccessor(FieldAccessor):
     def access_channel(self, buffer: bytes, channel_name: str) -> VoxelGridBuffer:

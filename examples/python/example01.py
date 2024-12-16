@@ -1,5 +1,5 @@
 from RadFiled3D.RadFiled3D import CartesianRadiationField, FieldStore, vec3, DType, StoreVersion
-from RadFiled3D.RadFiled3D import RadiationFieldMetadata, RadiationFieldSimulationMetadata, RadiationFieldXRayTubeMetadata, RadiationFieldSoftwareMetadata
+from RadFiled3D.RadFiled3D import RadiationFieldMetadataV1, RadiationFieldSimulationMetadataV1, RadiationFieldXRayTubeMetadataV1, RadiationFieldSoftwareMetadataV1
 
 
 ## See the C++ example for more details on the API usage
@@ -59,19 +59,19 @@ if __name__ == "__main__":
     print(f"Unset data: {voxel.get_data()}")
 
     # Create the metadata object for this field
-    metadata = RadiationFieldMetadata(
-        RadiationFieldSimulationMetadata(
+    metadata = RadiationFieldMetadataV1(
+        RadiationFieldSimulationMetadataV1(
             100,                            # Primary particles
             "SomeGeometry",                 # Geometry
             "PhysList",                     # Used physics list
-            RadiationFieldXRayTubeMetadata( # X-Ray tube metadata
+            RadiationFieldXRayTubeMetadataV1( # X-Ray tube metadata
                 vec3(0.0, 0.0, 0.0),
                 vec3(0.0, 0.0, 0.0),
                 0.0,
                 "SomeTubeID"
             )
         ),
-        RadiationFieldSoftwareMetadata(    # Software metadata
+        RadiationFieldSoftwareMetadataV1(    # Software metadata
             "SomeSoftware",
             "SomeVersion",
             "SomeRepository",

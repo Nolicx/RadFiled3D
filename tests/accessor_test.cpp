@@ -342,4 +342,69 @@ namespace {
 
 		EXPECT_TRUE(memoryUsed / 1000 < sizeof(ScalarVoxel<float>) * 2 + 1);
 	}
+
+	TEST(Serialization, Self) {
+		std::shared_ptr<CartesianRadiationField> field = std::make_shared<CartesianRadiationField>(glm::vec3(2.5f), glm::vec3(0.05f));
+		std::shared_ptr<VoxelGridBuffer> channel = std::static_pointer_cast<VoxelGridBuffer>(field->add_channel("test_channel"));
+
+		channel->add_layer<glm::vec3>("dirs", glm::vec3(0.f), "normalized direction");
+		channel->add_layer<float>("doserate", 25.3f, "Gy/s");
+		channel->add_custom_layer<HistogramVoxel>("spectra", HistogramVoxel(26, 10.f, nullptr), .123f, "");
+
+		ScalarVoxel<float>& vx = channel->get_voxel_flat<ScalarVoxel<float>>("doserate", 20);
+		vx = 10.f;
+
+		channel = std::static_pointer_cast<VoxelGridBuffer>(field->add_channel("empty"));
+
+		std::shared_ptr<RadFiled3D::Storage::V1::RadiationFieldMetadata> metadata = std::make_shared<RadFiled3D::Storage::V1::RadiationFieldMetadata>(
+			RadFiled3D::Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Simulation(
+				100,
+				"geom",
+				"FTFP_BERT",
+				RadFiled3D::Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Simulation::XRayTube(
+					glm::vec3(1.f, 0.f, 0.f),
+					glm::vec3(0.f, 0.f, 0.f),
+					100.f,
+					"XRayTube"
+				)
+			),
+			RadFiled3D::Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Software(
+				"test",
+				"1.0",
+				"repo",
+				"commit"
+			)
+		);
+
+		EXPECT_NO_THROW(FieldStore::store(field, metadata, "test01.rf3", StoreVersion::V1));
+
+		std::ifstream file("test01.rf3", std::ios::binary);
+
+		std::shared_ptr<FieldAccessor> accessor = FieldStore::construct_accessor(file);
+
+		auto serialized = FieldAccessor::Serialize(accessor);
+
+		std::shared_ptr<V1::CartesianFieldAccessor> accessor2 = std::dynamic_pointer_cast<V1::CartesianFieldAccessor>(FieldAccessor::Deserialize(serialized));
+
+		EXPECT_EQ(accessor->getFieldType(), accessor2->getFieldType());
+		EXPECT_EQ(accessor->getFieldDataOffset(), accessor2->getFieldDataOffset());
+		EXPECT_EQ(accessor->getVoxelCount(), accessor2->getVoxelCount());
+		{
+			std::ifstream file("test01.rf3", std::ios::binary);
+			EXPECT_NO_THROW(accessor2->accessField(file));
+		}
+		{
+			std::ifstream file("test01.rf3", std::ios::binary);
+			EXPECT_NO_THROW(accessor2->accessChannel(file, "test_channel"));
+		}
+		{
+			std::ifstream file("test01.rf3", std::ios::binary);
+			EXPECT_NO_THROW(accessor2->accessLayer(file, "test_channel", "doserate"));
+		}
+		{
+			std::ifstream file("test01.rf3", std::ios::binary);
+			auto vx = accessor2->accessVoxelFlat<float>(file, "test_channel", "doserate", 20);
+			EXPECT_EQ(vx->get_data(), 10.f);
+		}
+	}
 }

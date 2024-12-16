@@ -1,4 +1,4 @@
-from RadFiled3D.RadFiled3D import CartesianRadiationField, FieldStore, StoreVersion, DType, vec3, uvec3, RadiationFieldMetadata, RadiationFieldSoftwareMetadata, RadiationFieldXRayTubeMetadata, RadiationFieldSimulationMetadata
+from RadFiled3D.RadFiled3D import CartesianRadiationField, FieldStore, CartesianFieldAccessor, StoreVersion, DType, vec3, uvec3, RadiationFieldMetadataV1, RadiationFieldSoftwareMetadataV1, RadiationFieldXRayTubeMetadataV1, RadiationFieldSimulationMetadataV1
 
 
 def test_creation():
@@ -66,19 +66,19 @@ def test_modification_via_voxels():
 
 def test_metadata_store_and_peek():
     field = CartesianRadiationField(vec3(1, 1, 1), vec3(0.1, 0.1, 0.1))
-    metadata = RadiationFieldMetadata(
-        RadiationFieldSimulationMetadata(
+    metadata = RadiationFieldMetadataV1(
+        RadiationFieldSimulationMetadataV1(
             100,
             "",
             "Phys",
-            RadiationFieldXRayTubeMetadata(
+            RadiationFieldXRayTubeMetadataV1(
                 vec3(0, 0, 0),
                 vec3(0, 1, 0),
                 0,
                 "TubeID"
             )
         ),
-        RadiationFieldSoftwareMetadata(
+        RadiationFieldSoftwareMetadataV1(
             "RadFiled3D",
             "0.1.0",
             "repo",
@@ -88,7 +88,7 @@ def test_metadata_store_and_peek():
     )
     FieldStore.store(field, metadata, "test01.rf3", StoreVersion.V1)
 
-    metadata2 = FieldStore.peek_metadata("test01.rf3")
+    metadata2 = FieldStore.peek_metadata("test01.rf3").get_header()
 
     assert metadata2.simulation.primary_particle_count == 100
     assert metadata2.software.name == "RadFiled3D"
@@ -103,19 +103,19 @@ def test_metadata_store_and_peek():
 
 def test_metadata_store_and_load():
     field = CartesianRadiationField(vec3(1, 1, 1), vec3(0.1, 0.1, 0.1))
-    metadata = RadiationFieldMetadata(
-        RadiationFieldSimulationMetadata(
+    metadata = RadiationFieldMetadataV1(
+        RadiationFieldSimulationMetadataV1(
             100,
             "",
             "Phys",
-            RadiationFieldXRayTubeMetadata(
+            RadiationFieldXRayTubeMetadataV1(
                 vec3(0, 0, 0),
                 vec3(0, 1, 0),
                 0,
                 "TubeID"
             )
         ),
-        RadiationFieldSoftwareMetadata(
+        RadiationFieldSoftwareMetadataV1(
             "RadFiled3D",
             "0.1.0",
             "repo",
@@ -162,19 +162,19 @@ def test_store_and_load():
     assert array.min() == 1.0
     assert array.max() == 2.0
 
-    metadata = RadiationFieldMetadata(
-        RadiationFieldSimulationMetadata(
+    metadata = RadiationFieldMetadataV1(
+        RadiationFieldSimulationMetadataV1(
             100,
             "",
             "Phys",
-            RadiationFieldXRayTubeMetadata(
+            RadiationFieldXRayTubeMetadataV1(
                 vec3(0, 0, 0),
                 vec3(0, 0, 0),
                 0,
                 "TubeID"
             )
         ),
-        RadiationFieldSoftwareMetadata(
+        RadiationFieldSoftwareMetadataV1(
             "RadFiled3D",
             "0.1.0",
             "repo",
@@ -226,19 +226,19 @@ def test_single_layer_loading():
     assert array.min() == 1.0
     assert array.max() == 2.0
 
-    metadata = RadiationFieldMetadata(
-        RadiationFieldSimulationMetadata(
+    metadata = RadiationFieldMetadataV1(
+        RadiationFieldSimulationMetadataV1(
             100,
             "",
             "Phys",
-            RadiationFieldXRayTubeMetadata(
+            RadiationFieldXRayTubeMetadataV1(
                 vec3(0, 0, 0),
                 vec3(0, 0, 0),
                 0,
                 "TubeID"
             )
         ),
-        RadiationFieldSoftwareMetadata(
+        RadiationFieldSoftwareMetadataV1(
             "RadFiled3D",
             "0.1.0",
             "repo",
@@ -247,7 +247,10 @@ def test_single_layer_loading():
     )
     FieldStore.store(field, metadata, "test03.rf3", StoreVersion.V1)
 
-    doserate = FieldStore.load_single_grid_layer("test03.rf3", "channel1", "doserate")
+    accessor: CartesianFieldAccessor = FieldStore.construct_field_accessor("test03.rf3")
+
+    data = open("test03.rf3", "rb").read()
+    doserate = accessor.access_layer(data, "channel1", "doserate")
     doserate = doserate.get_as_ndarray()
     assert doserate.shape == (10, 10, 10)
     assert doserate.dtype == "float32"

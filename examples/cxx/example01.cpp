@@ -1,12 +1,13 @@
-#include <RadiationFieldStore.hpp>
-#include <RadiationField.hpp>
+#include <RadFiled3D/storage/RadiationFieldStore.hpp>
+#include <RadFiled3D/RadiationField.hpp>
 #include <iostream>
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 #include <memory>
 
 
-using namespace RadiationData;
+using namespace RadFiled3D;
+using namespace RadFiled3D::Storage;
 
 int main() {
 	// Create a radiation field with dimensions 2.5x2.5x2.5 and voxel dimensions 0.05x0.05x0.05.
@@ -48,19 +49,19 @@ int main() {
 	std::cout << hist.get_histogram()[1] << std::endl;
 
 	// Create the metadata object: The metadata object contains information about the simulation and the software used to create the radiation field
-	RadiationFieldMetadata metadata(
-		RadiationFieldMetadata::Simulation(
+	std::shared_ptr<RadFiled3D::Storage::RadiationFieldMetadata> metadata = std::make_shared<RadFiled3D::Storage::V1::RadiationFieldMetadata>(
+		RadFiled3D::Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Simulation(
 			0,
 			"SomeGeometryFile",
 			"FTFP_BERT",
-			RadiationFieldMetadata::Simulation::XRayTube(
+			RadFiled3D::Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Simulation::XRayTube(
 				glm::vec3(0.f, 1.f, 0.f),
 				glm::vec3(0.f),
 				0.f,
 				"SomeTubeID"
 			)
 		),
-		RadiationFieldMetadata::Software(
+		RadFiled3D::Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Software(
 			"Example01",
 			"DEV",
 			"",

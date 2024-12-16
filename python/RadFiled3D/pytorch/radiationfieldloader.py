@@ -1,12 +1,12 @@
-from RadFiled3D.RadFiled3D import FieldStore, RadiationField, RadiationFieldMetadataHeader, RadiationFieldMetadata, VoxelGrid, PolarSegments
+from RadFiled3D.RadFiled3D import FieldStore, RadiationField, RadiationFieldMetadata, VoxelGrid, PolarSegments, FieldAccessor, CartesianFieldAccessor, PolarFieldAccessor, Voxel
 import zipfile
 from enum import Enum
 import os
 from torch.utils.data import Dataset, random_split
 from typing import Type, Union, Tuple, Any
-import h5py
 from pathlib import Path
-import pickle
+from rich.progress import Progress
+from rich import print
 
 
 class MetadataLoadMode(Enum):
@@ -30,13 +30,12 @@ class RadiationFieldDataset(Dataset):
         """
         :param file_paths: List of file paths to radiation field files. If zip_file is provided, this parameter can be None. In this case the file paths are extracted from the zip file. If file_paths is str, then it will be checked if it is an hdf5 file. If so it will be treated as an preprocessed dataset and loaded as such.
         :param zip_file: Path to a zip file containing radiation field files. If file_paths is provided, this parameter can be None. In this case the file paths are extracted from the zip file.
-        :param metadata_load_mode: Mode for loading metadata. FULL loads the full metadata, HEADER only loads the header, DISABLED does not load metadata. Default is HEADER.
+        :param metadata_load_mode: Mode for loading metadata. FULL loads the full metadata, HEADER only loads the header, DISABLED does not load metadata. Default is HEADER. The provided metdata is a RadiationFieldMetadata object or None.
         """
         #assert file_paths is None or isinstance(file_paths, list) or isinstance(file_paths, str), "file_paths must be None, a list of strings or a string."
         if isinstance(file_paths, Path):
             file_paths = str(file_paths)
         self.file_paths = file_paths
-        self.is_preprocessed = file_paths is not None and isinstance(file_paths, str) and os.path.isfile(file_paths) and file_paths.lower().endswith(".hdf5")
         self.zip_file = zip_file
         self.metadata_load_mode = metadata_load_mode
         if self.file_paths is None and self.zip_file is not None:
@@ -47,80 +46,77 @@ class RadiationFieldDataset(Dataset):
         else:
             raise ValueError("Either file_paths or zip_file must be provided. Best practice is to provide both.")
 
-    def prepare_dataset(self):
-        """
-        Prepares the dataset by loading all radiation fields and metadata into memory.
-        """
-        import numpy as np
-
-        try:
-            import torch
-        except ImportError:
-            torch = None
-            print("PyTorch is not installed. Some functionalities may not be available.")
-
-        if len(self) == 0:
-            return
-        first_field, _ = self.__getitem__(0)
-        if isinstance(first_field, np.ndarray) or (torch is not None and isinstance(first_field, torch.Tensor)):
-            hdf5_path = os.path.join(os.path.dirname(self.zip_file), f"tmp/{os.path.splitext(os.path.basename(self.zip_file))[0]}_{self.channel_name}_{self.layer_name}.hdf5")
-            if not os.path.exists(os.path.dirname(hdf5_path)):
-                os.makedirs(os.path.dirname(hdf5_path))
-            if os.path.exists(hdf5_path):
-                os.remove(hdf5_path)
-            with h5py.File(hdf5_path, 'w') as hdf5_file:
-                for i, (field, metadata) in enumerate(self):
-                    if isinstance(metadata, RadiationFieldMetadata):
-                        metadata = metadata.get_header()
-                    hdf5_file.create_dataset(f'field_{i}', data=field)
-                    if metadata is not None:
-                        hdf5_file.create_dataset(f'metadata_{i}', data=pickle.dumps(metadata))
+        first_field_file_buffer = None
+        if self.zip_file is not None:
+            with zipfile.ZipFile(self.zip_file, 'r') as zip_ref:
+                with zip_ref.open(self.file_paths[0]) as file:
+                    first_field_file_buffer = file.read()
+        else:
+            first_field_file_buffer = open(self.file_paths[0], 'rb').read()
+        self.field_accessor: FieldAccessor = FieldStore.construct_field_accessor_from_buffer(first_field_file_buffer)
 
     def __len__(self):
         return len(self.file_paths)
+    
+    def get_file_buffer(self, idx: int) -> bytes:
+        if self.zip_file is not None:
+            with zipfile.ZipFile(self.zip_file, 'r') as zip_ref:
+                with zip_ref.open(self.file_paths[idx]) as file:
+                    return file.read()
+        else:
+            return open(self.file_paths[idx], 'rb').read()
+    
+    def check_dataset_integrity(self) -> bool:
+        """
+        Checks if all radiation field files in the dataset are valid.
+        :return: True, if all files are valid, False otherwise.
+        """
+        valid = True
+        invalid_files_count = 0
+        with Progress("Validating dataset") as progress:
+            task = progress.add_task("Checking dataset integrity...", total=len(self.file_paths))
+            for idx in range(len(self.file_paths)):
+                try:
+                    field = self.field_accessor.access_field(self.get_file_buffer(idx))
+                    if field is None:
+                        raise ValueError("Field is None.")
+                except Exception as e:
+                    valid = False
+                    print(f"Error loading file {self.file_paths[idx]}: {str(e)}")
+                    invalid_files_count += 1
+                progress.update(task, advance=1)
+        if not valid:
+            print(f"Dataset contains {invalid_files_count} invalid files.")
+        return valid
 
     def _get_radiation_field(self, idx: int) -> RadiationField:
-        file_path = self.file_paths[idx]
-        if self.zip_file is not None:
-            with zipfile.ZipFile(self.zip_file, 'r') as zip_ref:
-                with zip_ref.open(file_path) as file:
-                    field: RadiationField = FieldStore.load_from_buffer(file.read())
-        else:
-            field: RadiationField = FieldStore.load(file_path)
-        return field
+        return self.field_accessor.access_field(self.get_file_buffer(idx))
     
-    def _get_metadata(self, idx: int) -> Union[RadiationFieldMetadataHeader, RadiationFieldMetadata, None]:
-        file_path = self.file_paths[idx]
+    def _get_metadata(self, idx: int) -> Union[RadiationFieldMetadata, None]:
         if self.zip_file is not None:
-            with zipfile.ZipFile(self.zip_file, 'r') as zip_ref:
-                with zip_ref.open(file_path) as file:
-                    if self.metadata_load_mode == MetadataLoadMode.FULL:
-                        metadata: RadiationFieldMetadata = FieldStore.peek_metadata_from_buffer(file.read())
-                    elif self.metadata_load_mode == MetadataLoadMode.HEADER:
-                        metadata: RadiationFieldMetadataHeader = FieldStore.peek_metadata_from_buffer(file.read())
-                    else:
-                        metadata = None
+            file_buffer = self.get_file_buffer(idx)
+            if self.metadata_load_mode == MetadataLoadMode.FULL:
+                metadata: RadiationFieldMetadata = FieldStore.peek_metadata_from_buffer(file_buffer)
+            elif self.metadata_load_mode == MetadataLoadMode.HEADER:
+                metadata: RadiationFieldMetadata = FieldStore.peek_metadata_from_buffer(file_buffer)
+            else:
+                metadata = None
         else:
+            file_path = self.file_paths[idx]
             if self.metadata_load_mode == MetadataLoadMode.FULL:
                 metadata: RadiationFieldMetadata = FieldStore.load_metadata(file_path)
             elif self.metadata_load_mode == MetadataLoadMode.HEADER:
-                metadata: RadiationFieldMetadataHeader = FieldStore.peek_metadata(file_path)
+                metadata: RadiationFieldMetadata = FieldStore.peek_metadata(file_path)
             else:
                 metadata = None
         return metadata
 
-    def __getitem__(self, idx: int) -> Tuple[RadiationField, Union[RadiationFieldMetadataHeader, RadiationFieldMetadata, None]]:
-        if self.is_preprocessed:
-            with h5py.File(self.file_paths, 'r') as hdf5_file:
-                field = hdf5_file[f'field_{idx}']
-                metadata = hdf5_file[f'metadata_{idx}']
-                return (field, metadata)
-        else:
-            field = self._get_radiation_field(idx)
-            metadata = pickle.loads(self._get_metadata(idx))
-            return (self.transform_field(field), metadata)
+    def __getitem__(self, idx: int) -> Tuple[RadiationField, Union[RadiationFieldMetadata, None]]:
+        field = self._get_radiation_field(idx)
+        metadata = self._get_metadata(idx)
+        return (self.transform_field(field), metadata)
     
-    def __getitems__(self, indices: list[int]) -> list[Tuple[RadiationField, Union[RadiationFieldMetadataHeader, RadiationFieldMetadata, None]]]:
+    def __getitems__(self, indices: list[int]) -> list[Tuple[RadiationField, Union[RadiationFieldMetadata, None]]]:
         return [self.__getitem__(idx) for idx in indices]
     
     def __iter__(self):
@@ -143,7 +139,7 @@ class RadiationFieldDatasetIterator:
     def __iter__(self):
         return self
     
-    def __next__(self) -> Tuple[RadiationField, Union[RadiationFieldMetadataHeader, RadiationFieldMetadata, None]]:
+    def __next__(self) -> Tuple[RadiationField, Union[RadiationFieldMetadata, None]]:
         if self.idx < len(self.dataset):
             item = self.dataset[self.idx]
             self.idx += 1
@@ -160,6 +156,7 @@ class CartesianFieldSingleLayerDataset(RadiationFieldDataset):
 
     def __init__(self, file_paths: list[str] = None, zip_file: str = None, metadata_load_mode: MetadataLoadMode = MetadataLoadMode.HEADER):
         super().__init__(file_paths=file_paths, zip_file=zip_file, metadata_load_mode=metadata_load_mode)
+        self.field_accessor: CartesianFieldAccessor = self.field_accessor
         self.channel_name: str = None
         self.layer_name: str = None
 
@@ -167,19 +164,13 @@ class CartesianFieldSingleLayerDataset(RadiationFieldDataset):
         self.channel_name = channel_name
         self.layer_name = layer_name
 
-    def __getitem__(self, idx: int) -> Tuple[VoxelGrid, Union[RadiationFieldMetadataHeader, RadiationFieldMetadata, None]]:
+    def __getitem__(self, idx: int) -> Tuple[VoxelGrid, Union[RadiationFieldMetadata, None]]:
         return super().__getitem__(idx)
     
     def _get_radiation_field(self, idx: int) -> VoxelGrid:
         assert self.channel_name is not None and self.layer_name is not None, "Channel and layer must be set before loading the radiation field."
 
-        file_path = self.file_paths[idx]
-        if self.zip_file is not None:
-            with zipfile.ZipFile(self.zip_file, 'r') as zip_ref:
-                with zip_ref.open(file_path) as file:
-                    field: VoxelGrid = FieldStore.load_single_grid_layer_from_buffer(file.read(), self.channel_name, self.layer_name)
-        else:
-            field: VoxelGrid = FieldStore.load_single_grid_layer(file_path, self.channel_name, self.layer_name)
+        field: VoxelGrid = self.field_accessor.access_layer(self.get_file_buffer(idx), self.channel_name, self.layer_name)
         return field
 
 
@@ -193,25 +184,48 @@ class PolarFieldSingleLayerDataset(RadiationFieldDataset):
         super().__init__(file_paths=file_paths, zip_file=zip_file, metadata_load_mode=metadata_load_mode)
         self.channel_name: str = None
         self.layer_name: str = None
+        self.field_accessor: PolarFieldAccessor = self.field_accessor
 
     def set_channel_and_layer(self, channel_name: str, layer_name: str):
         self.channel_name = channel_name
         self.layer_name = layer_name
 
-    def __getitem__(self, idx: int) -> Tuple[PolarSegments, Union[RadiationFieldMetadataHeader, RadiationFieldMetadata, None]]:
+    def __getitem__(self, idx: int) -> Tuple[PolarSegments, Union[RadiationFieldMetadata, None]]:
         return super().__getitem__(idx)
     
     def _get_radiation_field(self, idx: int) -> PolarSegments:
         assert self.channel_name is not None and self.layer_name is not None, "Channel and layer must be set before loading the radiation field."
 
-        file_path = self.file_paths[idx]
-        if self.zip_file is not None:
-            with zipfile.ZipFile(self.zip_file, 'r') as zip_ref:
-                with zip_ref.open(file_path) as file:
-                    field: PolarSegments = FieldStore.load_single_polar_layer_from_buffer(file.read(), self.channel_name, self.layer_name)
-        else:
-            field: PolarSegments = FieldStore.load_single_polar_layer(file_path, self.channel_name, self.layer_name)
+        field: PolarSegments = self.field_accessor.access_layer(self.get_file_buffer(idx), self.channel_name, self.layer_name)
         return field
+
+
+class CartesianSingleVoxelDataset(CartesianFieldSingleLayerDataset):
+    def __len__(self):
+        return super().__len__() * self.field_accessor.get_voxel_count()
+    
+    def _get_radiation_field(self, idx: int) -> PolarSegments:
+        assert self.channel_name is not None and self.layer_name is not None, "Channel and layer must be set before loading the radiation field."
+        field_buffer = self.get_file_buffer(idx // self.field_accessor.get_voxel_count())
+        vx_idx = idx % self.field_accessor.get_voxel_count()
+        return self.field_accessor.access_voxel_flat(field_buffer, self.channel_name, self.layer_name, vx_idx)
+    
+    def _get_metadata(self, idx):
+        return super()._get_metadata(idx // self.field_accessor.get_voxel_count())
+
+
+class PolarSingleVoxelDataset(PolarFieldSingleLayerDataset):
+    def __len__(self):
+        return super().__len__() * self.field_accessor.get_voxel_count()
+    
+    def _get_radiation_field(self, idx: int) -> PolarSegments:
+        assert self.channel_name is not None and self.layer_name is not None, "Channel and layer must be set before loading the radiation field."
+        field_buffer = self.get_file_buffer(idx // self.field_accessor.get_voxel_count())
+        vx_idx = idx % self.field_accessor.get_voxel_count()
+        return self.field_accessor.access_voxel_flat(field_buffer, self.channel_name, self.layer_name, vx_idx)
+    
+    def _get_metadata(self, idx):
+        return super()._get_metadata(idx // self.field_accessor.get_voxel_count())
 
 
 class DatasetBuilder(object):

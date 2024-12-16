@@ -24,6 +24,7 @@ setup(
     default_version="1.0.0",
     dependencies=[
         "numpy>=2.0.0",
+        "rich"
     ],
     custom_builders=[
         CMakePreconfiguredBuilder(
