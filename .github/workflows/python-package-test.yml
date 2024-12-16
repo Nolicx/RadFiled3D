@@ -17,7 +17,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y g++ cmake
+        sudo apt-get install -y g++ cmake build-essential 
     - name: Install deps
       run: |
         pip install setuptools wheel
