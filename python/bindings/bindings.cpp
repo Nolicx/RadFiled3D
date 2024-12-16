@@ -1582,7 +1582,10 @@ PYBIND11_MODULE(RadFiled3D, m) {
 					return FieldAccessor::Deserialize(bytes);
 		    }))
             .def("get_field_type", &FieldAccessor::getFieldType)
-            .def("access_field", &FieldAccessor::accessField)
+			.def("access_field", [](std::shared_ptr<FieldAccessor> self, const std::vector<char>& bytes) {
+			    std::istringstream stream(std::string(bytes.begin(), bytes.end()));
+			    return self->accessField(stream);
+			})
             .def("get_store_version", &FieldAccessor::getStoreVersion)
             .def("get_voxel_count", &FieldAccessor::getVoxelCount)
 			.def("__repr__", [](const FieldAccessor& a) {
