@@ -67,9 +67,9 @@ add_library(libRadFiled3D STATIC ${SOURCES})
 # Add the include files
 target_include_directories(libRadFiled3D PUBLIC include)
 if (MSVC)
-  target_link_libraries(libRadFiled3D glm)
+  target_link_libraries(libRadFiled3D PUBLIC glm)
 else()
-  target_link_libraries(libRadFiled3D stdc++fs)
+  target_link_libraries(libRadFiled3D PUBLIC glm stdc++fs)
 endif()
 
 
