@@ -3,6 +3,7 @@
 #include <vector>
 #include <glm/vec3.hpp>
 #include "RadFiled3D/helpers/Typing.hpp"
+#include <cstring>
 #include <span>
 
 
