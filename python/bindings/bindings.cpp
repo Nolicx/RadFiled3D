@@ -1605,7 +1605,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
 		    })
 			.def("access_voxel_flat", [](std::shared_ptr<FieldAccessor> self, const std::vector<char>& bytes, const std::string& channel_name, const std::string& layer_name, size_t idx) {
 			    std::istringstream stream(std::string(bytes.begin(), bytes.end()));
-			    return self->accessVoxelFlat(stream, channel_name, layer_name, idx);
+			    return self->accessVoxelRawFlat(stream, channel_name, layer_name, idx);
 			});
 
         py::class_<Storage::CartesianFieldAccessor, std::shared_ptr<CartesianFieldAccessor>, RadFiled3D::Storage::FieldAccessor>(m, "CartesianFieldAccessor")
