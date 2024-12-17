@@ -22,7 +22,6 @@
 #include <tuple>
 
 
-
 namespace py = pybind11;
 using namespace pybind11::detail;
 using namespace RadFiled3D;
@@ -1580,14 +1579,15 @@ PYBIND11_MODULE(RadFiled3D, m) {
 				},
                 [](const std::vector<char>& bytes) {
 					return FieldAccessor::Deserialize(bytes);
-		    }))
+		        }
+            ))
             .def("get_field_type", &FieldAccessor::getFieldType)
-			.def("access_field", [](std::shared_ptr<FieldAccessor> self, const std::vector<char>& bytes) {
-			    std::istringstream stream(std::string(bytes.begin(), bytes.end()));
+			.def("access_field", [](std::shared_ptr<FieldAccessor> self, const py::bytes& bytes) {
+			    std::istringstream stream(static_cast<std::string>(bytes));
 			    return self->accessField(stream);
 			})
-			.def("get_store_version", [](const std::vector<char>& bytes) {
-			    std::istringstream stream(std::string(bytes.begin(), bytes.end()));
+			.def_static("get_store_version", [](const py::bytes& bytes) {
+                std::istringstream stream(static_cast<std::string>(bytes));
 			    return FieldAccessor::getStoreVersion(stream);
 			})
             .def("get_voxel_count", &FieldAccessor::getVoxelCount)
@@ -1606,80 +1606,80 @@ PYBIND11_MODULE(RadFiled3D, m) {
 				}
 			    return std::string("<RadiationData.FieldAccessor (") + field_type + std::string(")>");
 		    })
-			.def("access_voxel_flat", [](std::shared_ptr<FieldAccessor> self, const std::vector<char>& bytes, const std::string& channel_name, const std::string& layer_name, size_t idx) {
-			    std::istringstream stream(std::string(bytes.begin(), bytes.end()));
+			.def("access_voxel_flat", [](std::shared_ptr<FieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, size_t idx) {
+                std::istringstream stream(static_cast<std::string>(bytes));
 			    return self->accessVoxelRawFlat(stream, channel_name, layer_name, idx);
 			});
 
         py::class_<Storage::CartesianFieldAccessor, std::shared_ptr<CartesianFieldAccessor>, RadFiled3D::Storage::FieldAccessor>(m, "CartesianFieldAccessor")
-			.def("access_layer", [](std::shared_ptr<Storage::CartesianFieldAccessor> self, const std::vector<char>& bytes, const std::string& channel_name, const std::string& layer_name) {
-			    std::istringstream stream(std::string(bytes.begin(), bytes.end()));
+			.def("access_layer", [](std::shared_ptr<Storage::CartesianFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name) {
+                std::istringstream stream(static_cast<std::string>(bytes));
 			    return self->accessLayer(stream, channel_name, layer_name);
 			})
-			.def("access_channel", [](std::shared_ptr<Storage::CartesianFieldAccessor> self, const std::vector<char>& bytes, const std::string& channel_name) {
-			    std::istringstream stream(std::string(bytes.begin(), bytes.end()));
+			.def("access_channel", [](std::shared_ptr<Storage::CartesianFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name) {
+                std::istringstream stream(static_cast<std::string>(bytes));
 			    return self->accessChannel(stream, channel_name);
 			})
-			.def("access_voxel", [](std::shared_ptr<Storage::CartesianFieldAccessor> self, const std::vector<char>& bytes, const std::string& channel_name, const std::string& layer_name, const glm::uvec3& coord) {
-			    std::istringstream stream(std::string(bytes.begin(), bytes.end()));
+			.def("access_voxel", [](std::shared_ptr<Storage::CartesianFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, const glm::uvec3& coord) {
+                std::istringstream stream(static_cast<std::string>(bytes));
 			    return self->accessVoxelRaw(stream, channel_name, layer_name, coord);
 			})
 			.def("__repr__", [](const CartesianFieldAccessor& a) {
                 auto voxels = a.getVoxelCount();
 			    return std::string("<RadiationData.CartesianFieldAccessor (voxels: ") + std::to_string(voxels) + std::string(")>");
 			})
-			.def("access_voxel_by_coord", [](std::shared_ptr<Storage::CartesianFieldAccessor> self, const std::vector<char>& bytes, const std::string& channel_name, const std::string& layer_name, const glm::vec3& coord) {
-			    std::istringstream stream(std::string(bytes.begin(), bytes.end()));
+			.def("access_voxel_by_coord", [](std::shared_ptr<Storage::CartesianFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, const glm::vec3& coord) {
+                std::istringstream stream(static_cast<std::string>(bytes));
 			    return self->accessVoxelRawByCoord(stream, channel_name, layer_name, coord);
 			});
 
 		py::class_<V1::CartesianFieldAccessor, std::shared_ptr<V1::CartesianFieldAccessor>, Storage::CartesianFieldAccessor>(m, "CartesianFieldAccessorV1")
-            .def("access_layer", [](std::shared_ptr<Storage::V1::CartesianFieldAccessor> self, const std::vector<char>& bytes, const std::string& channel_name, const std::string& layer_name) {
-                std::istringstream stream(std::string(bytes.begin(), bytes.end()));
+            .def("access_layer", [](std::shared_ptr<Storage::V1::CartesianFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name) {
+                std::istringstream stream(static_cast<std::string>(bytes));
                 return self->accessLayer(stream, channel_name, layer_name);
             })
-			.def("access_channel", [](std::shared_ptr<Storage::V1::CartesianFieldAccessor> self, const std::vector<char>& bytes, const std::string& channel_name) {
-			    std::istringstream stream(std::string(bytes.begin(), bytes.end()));
+			.def("access_channel", [](std::shared_ptr<Storage::V1::CartesianFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name) {
+                std::istringstream stream(static_cast<std::string>(bytes));
 			    return self->accessChannel(stream, channel_name);
 			})
-			.def("access_voxel", [](std::shared_ptr<Storage::V1::CartesianFieldAccessor> self, const std::vector<char>& bytes, const std::string& channel_name, const std::string& layer_name, const glm::uvec3& coord) {
-			    std::istringstream stream(std::string(bytes.begin(), bytes.end()));
+			.def("access_voxel", [](std::shared_ptr<Storage::V1::CartesianFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, const glm::uvec3& coord) {
+                std::istringstream stream(static_cast<std::string>(bytes));
 				return self->accessVoxelRaw(stream, channel_name, layer_name, coord);
 		    })
 			.def("__repr__", [](const V1::CartesianFieldAccessor& a) {
 			    auto voxels = a.getVoxelCount();
 			    return std::string("<RadiationData.CartesianFieldAccessorV1 (voxels: ") + std::to_string(voxels) + std::string(")>");
 			})
-			.def("access_voxel_by_coord", [](std::shared_ptr<Storage::V1::CartesianFieldAccessor> self, const std::vector<char>& bytes, const std::string& channel_name, const std::string& layer_name, const glm::vec3& coord) {
-			    std::istringstream stream(std::string(bytes.begin(), bytes.end()));
+			.def("access_voxel_by_coord", [](std::shared_ptr<Storage::V1::CartesianFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, const glm::vec3& coord) {
+                std::istringstream stream(static_cast<std::string>(bytes));
 			    return self->accessVoxelRawByCoord(stream, channel_name, layer_name, coord);
 		    });
 
 		py::class_<Storage::PolarFieldAccessor, std::shared_ptr<Storage::PolarFieldAccessor>, Storage::FieldAccessor>(m, "PolarFieldAccessor")
-            .def("access_layer", [](std::shared_ptr<Storage::V1::PolarFieldAccessor> self, const std::vector<char>& bytes, const std::string& channel_name, const std::string& layer_name) {
-			    std::istringstream stream(std::string(bytes.begin(), bytes.end()));
+            .def("access_layer", [](std::shared_ptr<Storage::V1::PolarFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name) {
+                std::istringstream stream(static_cast<std::string>(bytes));
                 return self->accessLayer(stream, channel_name, layer_name);
             })
-			.def("access_voxel", [](std::shared_ptr<Storage::PolarFieldAccessor> self, const std::vector<char>& bytes, const std::string& channel_name, const std::string& layer_name, const glm::uvec2& coord) {
-			    std::istringstream stream(std::string(bytes.begin(), bytes.end()));
+			.def("access_voxel", [](std::shared_ptr<Storage::PolarFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, const glm::uvec2& coord) {
+                std::istringstream stream(static_cast<std::string>(bytes));
 			    return self->accessVoxelRaw(stream, channel_name, layer_name, coord);
 		    })
 			.def("__repr__", [](const PolarFieldAccessor& a) {
 			    auto voxels = a.getVoxelCount();
 			    return std::string("<RadiationData.PolarFieldAccessor (voxels: ") + std::to_string(voxels) + std::string(")>");
 		    })
-			.def("access_voxel_by_coord", [](std::shared_ptr<Storage::PolarFieldAccessor> self, const std::vector<char>& bytes, const std::string& channel_name, const std::string& layer_name, const glm::vec2& coord) {
-			    std::istringstream stream(std::string(bytes.begin(), bytes.end()));
+			.def("access_voxel_by_coord", [](std::shared_ptr<Storage::PolarFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, const glm::vec2& coord) {
+                std::istringstream stream(static_cast<std::string>(bytes));
 			    return self->accessVoxelRawByCoord(stream, channel_name, layer_name, coord);
 			});
 
 		py::class_<V1::PolarFieldAccessor, std::shared_ptr<V1::PolarFieldAccessor>, Storage::PolarFieldAccessor>(m, "PolarFieldAccessorV1")
-			.def("access_layer", [](std::shared_ptr<Storage::V1::PolarFieldAccessor> self, const std::vector<char>& bytes, const std::string& channel_name, const std::string& layer_name) {
-			    std::istringstream stream(std::string(bytes.begin(), bytes.end()));
+			.def("access_layer", [](std::shared_ptr<Storage::V1::PolarFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name) {
+                std::istringstream stream(static_cast<std::string>(bytes));
 			    return self->accessLayer(stream, channel_name, layer_name);
 			})
-			.def("access_voxel", [](std::shared_ptr<Storage::V1::PolarFieldAccessor> self, const std::vector<char>& bytes, const std::string& channel_name, const std::string& layer_name, const glm::uvec2& coord) {
-			    std::istringstream stream(std::string(bytes.begin(), bytes.end()));
+			.def("access_voxel", [](std::shared_ptr<Storage::V1::PolarFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, const glm::uvec2& coord) {
+                std::istringstream stream(static_cast<std::string>(bytes));
 			    return self->accessVoxelRaw(stream, channel_name, layer_name, coord);
 			})
 			.def("__repr__", [](const V1::PolarFieldAccessor& a) {
