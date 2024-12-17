@@ -815,9 +815,10 @@ class FieldAccessor:
         """
         ...
     
-    def get_store_version(self) -> StoreVersion:
+    @staticmethod
+    def get_store_version(data: bytes) -> StoreVersion:
         """
-        Returns the store version of the radiation field.
+        Returns the store version of the radiation field buffer
         """
         ...
 
