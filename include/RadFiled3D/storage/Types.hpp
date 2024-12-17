@@ -159,9 +159,7 @@ namespace RadFiled3D {
 
 				RadiationFieldMetadata();
 
-				~RadiationFieldMetadata() {
-					delete this->serializer;
-				}
+				~RadiationFieldMetadata();
 
 				virtual void serialize(std::ostream& stream) const override;
 

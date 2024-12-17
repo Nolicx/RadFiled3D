@@ -34,6 +34,11 @@ RadFiled3D::Storage::V1::RadiationFieldMetadata::RadiationFieldMetadata()
 	serializer(new V1::BinayFieldBlockHandler())
 {};
 
+RadFiled3D::Storage::V1::RadiationFieldMetadata::~RadiationFieldMetadata()
+{
+	delete this->serializer;
+}
+
 void RadFiled3D::Storage::V1::RadiationFieldMetadata::serialize(std::ostream& stream) const
 {
 	FiledTypes::V1::RadiationFieldMetadataHeaderBlock mHeader;
