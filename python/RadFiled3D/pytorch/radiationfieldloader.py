@@ -77,7 +77,7 @@ class RadiationFieldDataset(Dataset):
             task = progress.add_task("Checking dataset integrity...", total=len(self.file_paths))
             for idx in range(len(self.file_paths)):
                 try:
-                    field = self.field_accessor.access_field(self.get_file_buffer(idx))
+                    field = self.field_accessor.access_field_from_buffer(self.get_file_buffer(idx))
                     if field is None:
                         raise ValueError("Field is None.")
                 except Exception as e:
@@ -90,7 +90,7 @@ class RadiationFieldDataset(Dataset):
         return valid
 
     def _get_radiation_field(self, idx: int) -> RadiationField:
-        return self.field_accessor.access_field(self.get_file_buffer(idx))
+        return self.field_accessor.access_field_from_buffer(self.get_file_buffer(idx))
     
     def _get_metadata(self, idx: int) -> Union[RadiationFieldMetadata, None]:
         if self.zip_file is not None:
@@ -170,7 +170,7 @@ class CartesianFieldSingleLayerDataset(RadiationFieldDataset):
     def _get_radiation_field(self, idx: int) -> VoxelGrid:
         assert self.channel_name is not None and self.layer_name is not None, "Channel and layer must be set before loading the radiation field."
 
-        field: VoxelGrid = self.field_accessor.access_layer(self.get_file_buffer(idx), self.channel_name, self.layer_name)
+        field: VoxelGrid = self.field_accessor.access_layer_from_buffer(self.get_file_buffer(idx), self.channel_name, self.layer_name)
         return field
 
 
@@ -196,7 +196,7 @@ class PolarFieldSingleLayerDataset(RadiationFieldDataset):
     def _get_radiation_field(self, idx: int) -> PolarSegments:
         assert self.channel_name is not None and self.layer_name is not None, "Channel and layer must be set before loading the radiation field."
 
-        field: PolarSegments = self.field_accessor.access_layer(self.get_file_buffer(idx), self.channel_name, self.layer_name)
+        field: PolarSegments = self.field_accessor.access_layer_from_buffer(self.get_file_buffer(idx), self.channel_name, self.layer_name)
         return field
 
 
@@ -208,7 +208,7 @@ class CartesianSingleVoxelDataset(CartesianFieldSingleLayerDataset):
         assert self.channel_name is not None and self.layer_name is not None, "Channel and layer must be set before loading the radiation field."
         field_buffer = self.get_file_buffer(idx // self.field_accessor.get_voxel_count())
         vx_idx = idx % self.field_accessor.get_voxel_count()
-        return self.field_accessor.access_voxel_flat(field_buffer, self.channel_name, self.layer_name, vx_idx)
+        return self.field_accessor.access_voxel_flat_from_buffer(field_buffer, self.channel_name, self.layer_name, vx_idx)
     
     def _get_metadata(self, idx):
         return super()._get_metadata(idx // self.field_accessor.get_voxel_count())
@@ -222,7 +222,7 @@ class PolarSingleVoxelDataset(PolarFieldSingleLayerDataset):
         assert self.channel_name is not None and self.layer_name is not None, "Channel and layer must be set before loading the radiation field."
         field_buffer = self.get_file_buffer(idx // self.field_accessor.get_voxel_count())
         vx_idx = idx % self.field_accessor.get_voxel_count()
-        return self.field_accessor.access_voxel_flat(field_buffer, self.channel_name, self.layer_name, vx_idx)
+        return self.field_accessor.access_voxel_flat_from_buffer(field_buffer, self.channel_name, self.layer_name, vx_idx)
     
     def _get_metadata(self, idx):
         return super()._get_metadata(idx // self.field_accessor.get_voxel_count())
