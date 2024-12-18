@@ -27,6 +27,9 @@ Typing::DType Typing::Helper::get_dtype(const std::string& dtype)
 	if (dtype == Typing::Helper::get_plain_type_name<unsigned long long>()) {
 		return Typing::DType::UInt64;
 	}
+	if (dtype == Typing::Helper::get_plain_type_name<uint32_t>()) {
+		return Typing::DType::UInt32;
+	}
 	if (dtype == Typing::Helper::get_plain_type_name<unsigned long>()) {
 		return Typing::DType::UInt32;
 	}
@@ -76,9 +79,9 @@ size_t RadFiled3D::Typing::Helper::get_bytes_of_dtype(Typing::DType dtype)
 	case Typing::DType::Char:
 		return sizeof(char);
 	case Typing::DType::UInt64:
-		return sizeof(unsigned long long);
+		return sizeof(uint64_t);
 	case Typing::DType::UInt32:
-		return sizeof(unsigned long);
+		return sizeof(uint32_t);
 	case Typing::DType::Vec3:
 		return sizeof(glm::vec3);
 	case Typing::DType::Vec2:

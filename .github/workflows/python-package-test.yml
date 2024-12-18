@@ -3,34 +3,37 @@ name: Python Package using Conda
 on: [push]
 
 jobs:
-  build-linux:
-    runs-on: ubuntu-latest
+  build-windows:
+    runs-on: windows-latest
     strategy:
       max-parallel: 5
 
     steps:
     - uses: actions/checkout@v4
+    - name: Install compiler
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: x64
+    - name: Install CMake
+      uses: jwlawson/actions-setup-cmake@v1
+      with:
+        cmake-version: '3.21.3'
     - name: Set up Python 3.12
       uses: actions/setup-python@v3
       with:
         python-version: '3.12'
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y g++ cmake build-essential 
     - name: Install deps
       run: |
-        pip install setuptools wheel
-        pip install ./modules/fb63SetupTools-2.0.7-py3-none-any.whl
-        pip install . --no-build-isolation
+        python -m pip install setuptools wheel
+        python -m pip install . --no-build-isolation
     - name: Lint with flake8
       run: |
-        pip install flake8
+        python -m pip install flake8
         # stop the build if there are Python syntax errors or undefined names
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        python -m flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with pytest
       run: |
-        pip install pytest
-        pytest ./tests/
+        python -m pip install pytest
+        python -m pytest ./tests/

@@ -6,6 +6,7 @@
 #include "RadFiled3D/storage/FieldSerializer.hpp"
 #include "RadFiled3D/storage/MetadataAccessor.hpp"
 #include <istream>
+#include <fstream>
 #include <memory>
 
 using namespace RadFiled3D;
@@ -106,11 +107,11 @@ std::vector<char> RadFiled3D::Storage::FieldAccessor::Serialize(std::shared_ptr<
 
 	if (sdata->field_type == FieldType::Cartesian) {
 		serialized_accessor.resize(sizeof(V1::CartesianFieldAccessor::SerializationData) + additional_data.size());
-		memcpy((char*)serialized_accessor.data(), sdata, sizeof(V1::CartesianFieldAccessor::SerializationData));
+		memcpy((char*)serialized_accessor.data(), (void*)sdata, sizeof(V1::CartesianFieldAccessor::SerializationData));
 	}
 	else if (sdata->field_type == FieldType::Polar) {
 		serialized_accessor.resize(sizeof(V1::PolarFieldAccessor::SerializationData) + additional_data.size());
-		memcpy((char*)serialized_accessor.data(), sdata, sizeof(V1::PolarFieldAccessor::SerializationData));
+		memcpy((char*)serialized_accessor.data(), (void*)sdata, sizeof(V1::PolarFieldAccessor::SerializationData));
 	}
 	else {
 		throw std::runtime_error("Unsupported field type");
@@ -129,7 +130,7 @@ std::shared_ptr<FieldAccessor> RadFiled3D::Storage::FieldAccessor::Deserialize(c
 	if (sdata_header.store_version == StoreVersion::V1) {
 		if (sdata_header.field_type == FieldType::Cartesian) {
 			V1::CartesianFieldAccessor::SerializationData sdata;
-			memcpy(((char*)&sdata), buffer.data(), sizeof(V1::CartesianFieldAccessor::SerializationData));
+			memcpy(((char*)&sdata), buffer.data(), sizeof(V1::CartesianFieldAccessor::SerializationData) - sizeof(std::map<std::string, AccessorTypes::ChannelStructure>));
 
 			size_t remaining_size = buffer.size() - sizeof(V1::CartesianFieldAccessor::SerializationData);
 			std::vector<char> additional_data(remaining_size);
@@ -139,7 +140,7 @@ std::shared_ptr<FieldAccessor> RadFiled3D::Storage::FieldAccessor::Deserialize(c
 		}
 		else if (sdata_header.field_type == FieldType::Polar) {
 			V1::PolarFieldAccessor::SerializationData sdata;
-			memcpy(((char*)&sdata), buffer.data(), sizeof(V1::PolarFieldAccessor::SerializationData));
+			memcpy(((char*)&sdata), buffer.data(), sizeof(V1::PolarFieldAccessor::SerializationData) - sizeof(std::map<std::string, AccessorTypes::ChannelStructure>));
 
 			size_t remaining_size = buffer.size() - sizeof(V1::PolarFieldAccessor::SerializationData);
 			std::vector<char> additional_data(remaining_size);
@@ -271,16 +272,24 @@ IVoxel* RadFiled3D::Storage::V1::FileParser::accessVoxelRawFlat(std::istream& bu
 		voxel = new OwningScalarVoxel<float>((float*)data_buffer);
 		break;
 	case Typing::DType::Double:
+#if defined(__x86_64__) || defined(_M_X64)
 		voxel = new OwningScalarVoxel<double>((double*)data_buffer);
+#else
+		throw RadiationFieldStoreException("Can't load 64-bit file in 32-bit system!");
+#endif
 		break;
 	case Typing::DType::Int:
 		voxel = new OwningScalarVoxel<int>((int*)data_buffer);
 		break;
 	case Typing::DType::UInt32:
-		voxel = new OwningScalarVoxel<unsigned long>((unsigned long*)data_buffer);
+		voxel = new OwningScalarVoxel<uint32_t>((uint32_t*)data_buffer);
 		break;
 	case Typing::DType::UInt64:
-		voxel = new OwningScalarVoxel<unsigned long long>((unsigned long long*)data_buffer);
+#if defined(__x86_64__) || defined(_M_X64)
+		voxel = new OwningScalarVoxel<uint64_t>((uint64_t*)data_buffer);
+#else
+		throw RadiationFieldStoreException("Can't load 64-bit file in 32-bit system!");
+#endif
 		break;
 	case Typing::DType::Char:
 		voxel = new OwningScalarVoxel<char>((char*)data_buffer);
@@ -293,6 +302,8 @@ IVoxel* RadFiled3D::Storage::V1::FileParser::accessVoxelRawFlat(std::istream& bu
 		break;
 	case Typing::DType::Vec4:
 		voxel = new OwningScalarVoxel<glm::vec4>((glm::vec4*)data_buffer);
+		break;
+	case Typing::DType::Hist:
 		break;
 	}
 
@@ -376,9 +387,14 @@ std::shared_ptr<IRadiationField> RadFiled3D::Storage::V1::CartesianFieldAccessor
 
 std::shared_ptr<VoxelGridBuffer> RadFiled3D::Storage::V1::CartesianFieldAccessor::accessChannel(std::istream& buffer, const std::string& channel_name) const
 {
+	std::ofstream out("access_channel_accessor.log", std::ios::app);
+	out << "From CartesianFieldAccessorV1" << std::endl;
+	out << "Accessing channel '" << channel_name << "'" << std::endl;
 	auto channel_block_itr = this->channels_layers_offsets.find(channel_name);
-	if (channel_block_itr == this->channels_layers_offsets.end())
+	if (channel_block_itr == this->channels_layers_offsets.end()) {
+		out << "Channel not found" << std::endl;
 		throw RadiationFieldStoreException("Channel not found");
+	}
 
 	auto& channel_block = channel_block_itr->second.channel_block;
 
@@ -389,6 +405,8 @@ std::shared_ptr<VoxelGridBuffer> RadFiled3D::Storage::V1::CartesianFieldAccessor
 	buffer.read(data_buffer, channel_block.size);
 	this->serializer->deserializeChannel(grid_buffer, data_buffer, channel_block.size);
 	delete[] data_buffer;
+
+	out << "Channel voxels loaded: " << grid_buffer->get_voxel_count() << std::endl;
 
 	return grid_buffer;
 }

@@ -108,7 +108,7 @@ namespace RadFiled3D {
 				case FieldJoinMode::Multiply:
 					return [](const dtype& a, const dtype& b) { return a * b; };
 				case FieldJoinMode::AddWeighted:
-					return [ratio](const dtype& a, const dtype& b) { return (a * (1.f - ratio)) + (b * ratio); };
+					return [ratio](const dtype& a, const dtype& b) { return static_cast<dtype>((a * (1.f - ratio)) + (b * ratio)); };
 				default:
 					throw RadiationFieldStoreException("Unknown join mode");
 				}

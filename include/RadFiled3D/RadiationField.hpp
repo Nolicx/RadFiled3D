@@ -89,7 +89,7 @@ namespace RadFiled3D
 		* @param channel_name The name of the channel to check
 		* @return True if the channel exists, false otherwise
 		*/
-		inline bool has_channel(const std::string& channel_name) const {
+		virtual bool has_channel(const std::string& channel_name) const override {
 			return this->channels.find(channel_name) != this->channels.end();
 		};
 

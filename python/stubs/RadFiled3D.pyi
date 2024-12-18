@@ -827,7 +827,7 @@ class FieldAccessor:
         """
         ...
 
-    def access_voxel_flat(self, buffer: bytes, channel_name: str, layer_name: str, idx: int) -> Voxel:
+    def access_voxel_flat_from_buffer(self, buffer: bytes, channel_name: str, layer_name: str, idx: int) -> Voxel:
         """
         Get a voxel at a specific linear index from a data buffer.
 
@@ -839,7 +839,19 @@ class FieldAccessor:
         """
         ...
 
-    def access_field(self, buffer: bytes) -> RadiationField:
+    def access_voxel_flat(self, file: str, channel_name: str, layer_name: str, idx: int) -> Voxel:
+        """
+        Get a voxel at a specific linear index from a file.
+
+        :param file: The file path to the stored radiation field.
+        :param channel_name: The name of the channel.
+        :param layer_name: The name of the layer.
+        :param idx: The index of the voxel.
+        :return: The voxel at the specified index.
+        """
+        ...
+
+    def access_field_from_buffer(self, buffer: bytes) -> RadiationField:
         """
         Get a radiation field from a data buffer.
 
@@ -848,9 +860,18 @@ class FieldAccessor:
         """
         ...
 
+    def access_field(self, file: str) -> RadiationField:
+        """
+        Get a radiation field from a file.
+
+        :param file: The file path to the stored radiation field.
+        :return: The radiation field.
+        """
+        ...
+
 
 class CartesianFieldAccessor(FieldAccessor):
-    def access_channel(self, buffer: bytes, channel_name: str) -> VoxelGridBuffer:
+    def access_channel_from_buffer(self, buffer: bytes, channel_name: str) -> VoxelGridBuffer:
         """
         Get a channel by name from a data buffer.
 
@@ -860,7 +881,17 @@ class CartesianFieldAccessor(FieldAccessor):
         """
         ...
 
-    def access_layer(self, buffer: bytes, channel_name: str, layer_name: str) -> VoxelGrid:
+    def access_channel(self, file: str, channel_name: str) -> VoxelGridBuffer:
+        """
+        Get a channel by name from a file
+
+        :param file: The file path to the stored radiation field.
+        :param channel_name: The name of the channel.
+        :return: The channel.
+        """
+        ...
+
+    def access_layer_from_buffer(self, buffer: bytes, channel_name: str, layer_name: str) -> VoxelGrid:
         """
         Get a layer by name from a data buffer.
 
@@ -871,7 +902,18 @@ class CartesianFieldAccessor(FieldAccessor):
         """
         ...
 
-    def access_voxel(self, buffer: bytes, channel_name: str, layer_name: str, idx: uvec3) -> Voxel:
+    def access_layer(self, file: str, channel_name: str, layer_name: str) -> VoxelGrid:
+        """
+        Get a layer by name from a file.
+
+        :param file: The file path to the stored radiation field.
+        :param channel_name: The name of the channel.
+        :param layer_name: The name of the layer.
+        :return: The layer.
+        """
+        ...
+
+    def access_voxel_from_buffer(self, buffer: bytes, channel_name: str, layer_name: str, idx: uvec3) -> Voxel:
         """
         Get a voxel at a specific quantized index from a data buffer.
 
@@ -882,8 +924,20 @@ class CartesianFieldAccessor(FieldAccessor):
         :return: The voxel at the specified index.
         """
         ...
+    
+    def access_voxel(self, file: str, channel_name: str, layer_name: str, idx: uvec3) -> Voxel:
+        """
+        Get a voxel at a specific quantized index from a file.
 
-    def access_voxel_by_coord(self, buffer: bytes, channel_name: str, layer_name: str, coord: vec3) -> Voxel:
+        :param file: The file path to the stored radiation field.
+        :param channel_name: The name of the channel.
+        :param layer_name: The name of the layer.
+        :param idx: The index of the voxel.
+        :return: The voxel at the specified index.
+        """
+        ...
+
+    def access_voxel_by_coord_from_buffer(self, buffer: bytes, channel_name: str, layer_name: str, coord: vec3) -> Voxel:
         """
         Get a voxel at specific continuous coordinates from a data buffer.
 
@@ -893,11 +947,23 @@ class CartesianFieldAccessor(FieldAccessor):
         :param coord: The coordinates of the voxel.
         :return: The voxel at the specified coordinates.
         """
-        ...    
+        ...
+
+    def access_voxel_by_coord(self, file: str, channel_name: str, layer_name: str, coord: vec3) -> Voxel:
+        """
+        Get a voxel at specific continuous coordinates from a file.
+
+        :param file: The file path to the stored radiation field.
+        :param channel_name: The name of the channel.
+        :param layer_name: The name of the layer.
+        :param coord: The coordinates of the voxel.
+        :return: The voxel at the specified coordinates.
+        """
+        ...
 
 
 class PolarFieldAccessor(FieldAccessor):
-    def access_layer(self, buffer: bytes, channel_name: str, layer_name: str) -> PolarSegments:
+    def access_layer_from_buffer(self, buffer: bytes, channel_name: str, layer_name: str) -> PolarSegments:
         """
         Get a layer by name from a data buffer.
 
@@ -908,7 +974,18 @@ class PolarFieldAccessor(FieldAccessor):
         """
         ...
 
-    def access_voxel(self, buffer: bytes, channel_name: str, layer_name: str, idx: uvec2) -> Voxel:
+    def access_layer(self, file: str, channel_name: str, layer_name: str) -> PolarSegments:
+        """
+        Get a layer by name from a file.
+
+        :param file: The file path to the stored radiation field.
+        :param channel_name: The name of the channel.
+        :param layer_name: The name of the layer.
+        :return: The layer.
+        """
+        ...
+
+    def access_voxel_from_buffer(self, buffer: bytes, channel_name: str, layer_name: str, idx: uvec2) -> Voxel:
         """
         Get a voxel at a specific quantized index from a data buffer.
 
@@ -919,12 +996,36 @@ class PolarFieldAccessor(FieldAccessor):
         :return: The voxel at the specified index.
         """
         ...
+    
+    def access_voxel(self, file: str, channel_name: str, layer_name: str, idx: uvec2) -> Voxel:
+        """
+        Get a voxel at a specific quantized index from a file.
 
-    def access_voxel_by_coord(self, buffer: bytes, channel_name: str, layer_name: str, coord: vec2) -> Voxel:
+        :param file: The file path to the stored radiation field.
+        :param channel_name: The name of the channel.
+        :param layer_name: The name of the layer.
+        :param idx: The index of the voxel.
+        :return: The voxel at the specified index.
+        """
+        ...
+
+    def access_voxel_by_coord_from_buffer(self, buffer: bytes, channel_name: str, layer_name: str, coord: vec2) -> Voxel:
         """
         Get a voxel at specific continuous coordinates from a data buffer.
 
         :param buffer: The buffer to load the radiation field from.
+        :param channel_name: The name of the channel.
+        :param layer_name: The name of the layer.
+        :param coord: The coordinates of the voxel.
+        :return: The voxel at the specified coordinates.
+        """
+        ...
+
+    def access_voxel_by_coord(self, file: str, channel_name: str, layer_name: str, coord: vec2) -> Voxel:
+        """
+        Get a voxel at specific continuous coordinates from a file.
+
+        :param file: The file path to the stored radiation field.
         :param channel_name: The name of the channel.
         :param layer_name: The name of the layer.
         :param coord: The coordinates of the voxel.

@@ -20,12 +20,85 @@
 #include <memory>
 #include <string>
 #include <tuple>
+#include <iostream>
 
 
 namespace py = pybind11;
 using namespace pybind11::detail;
 using namespace RadFiled3D;
 using namespace RadFiled3D::Storage;
+
+struct NonDeletingDeleter {
+    void operator()(void*) const {
+        // Do nothing
+    }
+};
+
+// This macro is used to return a shared_ptr that does not delete the object. Used for returning regular voxel pointers from radiation field buffers that are not holding their own data.
+#define VOXEL_REFERENCE(vx) std::shared_ptr<IVoxel>(static_cast<IVoxel*>(vx), NonDeletingDeleter())
+#define VOXEL_CAPSULE(vx, T) std::static_pointer_cast<IVoxel>(std::shared_ptr<T>(static_cast<T*>(vx)))
+
+#define DECLARE_SCALAR_VOXEL(m, dT, name, parent) \
+    py::class_<ScalarVoxel<dT>, std::shared_ptr<ScalarVoxel<dT>>, parent>(m, name)\
+        .def("get_data", &ScalarVoxel<dT>::get_data, py::return_value_policy::reference)\
+        .def("set_data", [](ScalarVoxel<dT>& v, dT value) {\
+            v = value;\
+        })\
+        .def(py::self == py::self)\
+        .def(py::self /= py::self)\
+        .def(py::self *= py::self)\
+        .def(py::self += py::self)\
+        .def(py::self -= py::self)\
+        .def("__repr__",\
+            [](const ScalarVoxel<dT>& a) {\
+                return "<RadFiled3D." + std::string(name) + " (" + std::to_string(a.get_data()) + ")>";\
+            }\
+        )
+
+#define DECLARE_OWNING_SCALAR_VOXEL(m, dT, name, parent) \
+    py::class_<OwningScalarVoxel<dT>, std::shared_ptr<OwningScalarVoxel<dT>>, parent>(m, name)\
+        .def("get_data", &OwningScalarVoxel<dT>::get_data, py::return_value_policy::reference)\
+        .def("set_data", [](OwningScalarVoxel<dT>& v, dT value) {\
+            v.set_data(&value);\
+        })\
+        .def(py::self == py::self)\
+        .def(py::self /= py::self)\
+        .def(py::self *= py::self)\
+        .def(py::self += py::self)\
+        .def(py::self -= py::self)\
+        .def("__repr__",\
+            [](const OwningScalarVoxel<dT>& a) {\
+                return "<RadFiled3D." + std::string(name) + " (" + std::to_string(a.get_data()) + ")>";\
+            }\
+        )
+
+
+std::shared_ptr<IVoxel> encapsulate_voxel(IVoxel* vx) {
+    const Typing::DType type = Typing::Helper::get_dtype(vx->get_type());
+    switch (type) {
+    case Typing::DType::Float:
+        return VOXEL_CAPSULE(vx, ScalarVoxel<float>);
+    case Typing::DType::Double:
+        return VOXEL_CAPSULE(vx, ScalarVoxel<double>);
+    case Typing::DType::Int:
+        return VOXEL_CAPSULE(vx, ScalarVoxel<int>);
+    case Typing::DType::Char:
+        return VOXEL_CAPSULE(vx, ScalarVoxel<char>);
+    case Typing::DType::Vec2:
+        return VOXEL_CAPSULE(vx, ScalarVoxel<glm::vec2>);
+    case Typing::DType::Vec3:
+        return VOXEL_CAPSULE(vx, ScalarVoxel<glm::vec3>);
+    case Typing::DType::Vec4:
+        return VOXEL_CAPSULE(vx, ScalarVoxel<glm::vec4>);
+    case Typing::DType::Hist:
+        return VOXEL_CAPSULE(vx, HistogramVoxel);
+    case Typing::DType::UInt64:
+        return VOXEL_CAPSULE(vx, ScalarVoxel<uint64_t>);
+    case Typing::DType::UInt32:
+        return VOXEL_CAPSULE(vx, ScalarVoxel<uint32_t>);
+    }
+    throw std::runtime_error("Unsupported voxel type: " + std::to_string(static_cast<int>(type)));
+}
 
 std::map<void*, std::pair<std::atomic<size_t>, std::shared_ptr<void>>> shared_ptrs;
 
@@ -750,7 +823,11 @@ PYBIND11_MODULE(RadFiled3D, m) {
             return header;
 	    }));
 
-    py::class_<IVoxel>(m, "Voxel");
+    py::class_<IVoxel, std::shared_ptr<IVoxel>>(m, "Voxel")
+		.def("__repr__",
+			[](const IVoxel& a) {
+				return "<RadFiled3D.IVoxel>";
+			});
 
     py::class_<Storage::RadiationFieldMetadata, std::shared_ptr<Storage::RadiationFieldMetadata>>(m, "RadiationFieldMetadata");
 
@@ -760,107 +837,35 @@ PYBIND11_MODULE(RadFiled3D, m) {
         .def("set_header", &Storage::V1::RadiationFieldMetadata::set_header)
         .def("get_dynamic_metadata", [](Storage::V1::RadiationFieldMetadata& self, const std::string& key) {
             IVoxel* voxel = self.get_dynamic_metadata().at(key);
-            return voxel;
+            return VOXEL_REFERENCE(voxel);
 		}, py::return_value_policy::reference)
         .def("get_dynamic_metadata_keys", &Storage::V1::RadiationFieldMetadata::get_dynamic_metadata_keys);
 
-    py::class_<ScalarVoxel<float>, IVoxel>(m, "Float32Voxel")
-        .def("get_data", &ScalarVoxel<float>::get_data, py::return_value_policy::reference)
-        .def("set_data", [](ScalarVoxel<float>& v, float value) {
-            v = value;
-        })
-        .def(py::self == py::self)
-        .def(py::self /= py::self)
-        .def(py::self *= py::self)
-        .def(py::self += py::self)
-        .def(py::self -= py::self)
-        .def("__repr__",
-            [](const ScalarVoxel<float>& a) {
-                return "<RadiationData.Float32Voxel (" + std::to_string(a.get_data()) + ")>";
-            }
-        );
+    // TODO: SWITCH TO USING DECLARE_SCALAR_VOXEL(...) makro
 
-    py::class_<ScalarVoxel<uint64_t>, IVoxel>(m, "UInt64Voxel")
-        .def("get_data", &ScalarVoxel<uint64_t>::get_data, py::return_value_policy::reference)
-        .def("set_data", [](ScalarVoxel<uint64_t>& v, uint64_t value) {
-            v = value;
-        })
-        .def(py::self == py::self)
-        .def(py::self /= py::self)
-        .def(py::self *= py::self)
-        .def(py::self += py::self)
-        .def(py::self -= py::self)
-        .def("__repr__",
-            [](const ScalarVoxel<uint64_t>& a) {
-                return "<RadiationData.UInt64Voxel (" + std::to_string(a.get_data()) + ")>";
-            }
-        );
+    DECLARE_SCALAR_VOXEL(m, float, "Float32Voxel", IVoxel);
+    DECLARE_OWNING_SCALAR_VOXEL(m, float, "OwningFloat32Voxel", ScalarVoxel<float>);
 
-    py::class_<ScalarVoxel<unsigned long>, IVoxel>(m, "UInt32Voxel")
-        .def("get_data", &ScalarVoxel<unsigned long>::get_data, py::return_value_policy::reference)
-        .def("set_data", [](ScalarVoxel<unsigned long>& v, unsigned long value) {
-        v = value;
-            })
-        .def(py::self == py::self)
-        .def(py::self /= py::self)
-        .def(py::self *= py::self)
-        .def(py::self += py::self)
-        .def(py::self -= py::self)
-        .def("__repr__",
-            [](const ScalarVoxel<uint64_t>& a) {
-                return "<RadiationData.UInt32Voxel (" + std::to_string(a.get_data()) + ")>";
-            }
-        );
+#if defined(__x86_64__) || defined(_M_X64)
+	DECLARE_SCALAR_VOXEL(m, uint64_t, "UInt64Voxel", IVoxel);
+	DECLARE_OWNING_SCALAR_VOXEL(m, uint64_t, "OwningUInt64Voxel", ScalarVoxel<uint64_t>);
+#endif
 
-    py::class_<ScalarVoxel<char>, IVoxel>(m, "ByteVoxel")
-        .def("get_data", &ScalarVoxel<char>::get_data, py::return_value_policy::reference)
-        .def("set_data", [](ScalarVoxel<char>& v, char value) {
-            v = value;
-        })
-        .def(py::self == py::self)
-        .def(py::self /= py::self)
-        .def(py::self *= py::self)
-        .def(py::self += py::self)
-        .def(py::self -= py::self)
-        .def("__repr__",
-            [](const ScalarVoxel<char>& a) {
-                return "<RadiationData.ByteVoxel (" + std::to_string(a.get_data()) + ")>";
-            }
-        );
+	DECLARE_SCALAR_VOXEL(m, uint32_t, "UInt32Voxel", IVoxel);
+	DECLARE_OWNING_SCALAR_VOXEL(m, uint32_t, "OwningUInt32Voxel", ScalarVoxel<uint32_t>);
 
-    py::class_<ScalarVoxel<int>, IVoxel>(m, "Int32Voxel")
-        .def("get_data", &ScalarVoxel<int>::get_data, py::return_value_policy::reference)
-        .def("set_data", [](ScalarVoxel<int>& v, int value) {
-            v = value;
-        })
-        .def(py::self == py::self)
-        .def(py::self /= py::self)
-        .def(py::self *= py::self)
-        .def(py::self += py::self)
-        .def(py::self -= py::self)
-        .def("__repr__",
-            [](const ScalarVoxel<int>& a) {
-                return "<RadiationData.Int32Voxel (" + std::to_string(a.get_data()) + ")>";
-            }
-        );
+	DECLARE_SCALAR_VOXEL(m, char, "ByteVoxel", IVoxel);
+	DECLARE_OWNING_SCALAR_VOXEL(m, char, "OwningByteVoxel", ScalarVoxel<char>);
 
-    py::class_<ScalarVoxel<double>, IVoxel>(m, "Float64Voxel")
-        .def("get_data", &ScalarVoxel<double>::get_data, py::return_value_policy::reference)
-        .def("set_data", [](ScalarVoxel<double>& v, double value) {
-            v = value;
-        })
-        .def(py::self == py::self)
-        .def(py::self /= py::self)
-        .def(py::self *= py::self)
-        .def(py::self += py::self)
-        .def(py::self -= py::self)
-        .def("__repr__",
-            [](const ScalarVoxel<double>& a) {
-                return "<RadiationData.Float64Voxel (" + std::to_string(a.get_data()) + ")>";
-            }
-        );
+	DECLARE_SCALAR_VOXEL(m, int, "Int32Voxel", IVoxel);
+	DECLARE_OWNING_SCALAR_VOXEL(m, int, "OwningInt32Voxel", ScalarVoxel<int>);
 
-    py::class_<ScalarVoxel<glm::vec2>, IVoxel>(m, "Vec2Voxel")
+#if defined(__x86_64__) || defined(_M_X64)
+	DECLARE_SCALAR_VOXEL(m, int64_t, "Int64Voxel", IVoxel);
+	DECLARE_OWNING_SCALAR_VOXEL(m, int64_t, "OwningInt64Voxel", ScalarVoxel<int64_t>);
+#endif
+
+    py::class_<ScalarVoxel<glm::vec2>, std::shared_ptr<ScalarVoxel<glm::vec2>>, IVoxel>(m, "Vec2Voxel")
         .def("get_data", &ScalarVoxel<glm::vec2>::get_data, py::return_value_policy::reference)
         .def("set_data", [](ScalarVoxel<glm::vec2>& v, const glm::vec2& value) {
             v = value;
@@ -872,11 +877,25 @@ PYBIND11_MODULE(RadFiled3D, m) {
         .def(py::self -= py::self)
         .def("__repr__",
             [](const ScalarVoxel<glm::vec2>& a) {
-                return "<RadiationData.Vec2Voxel (" + std::to_string(a.get_data().x) + ", " + std::to_string(a.get_data().y) + ")>";
+                return "<RadFiled3D.Vec2Voxel (" + std::to_string(a.get_data().x) + ", " + std::to_string(a.get_data().y) + ")>";
             }
         );
 
-    py::class_<ScalarVoxel<glm::vec3>, IVoxel>(m, "Vec3Voxel")
+	py::class_<OwningScalarVoxel<glm::vec2>, std::shared_ptr<OwningScalarVoxel<glm::vec2>>, ScalarVoxel<glm::vec2>>(m, "OwningVec2Voxel")
+		.def("get_data", &OwningScalarVoxel<glm::vec2>::get_data, py::return_value_policy::reference)
+		.def("set_data", &OwningScalarVoxel<glm::vec2>::set_data)
+		.def(py::self == py::self)
+		.def(py::self /= py::self)
+		.def(py::self *= py::self)
+		.def(py::self += py::self)
+		.def(py::self -= py::self)
+		.def("__repr__",
+			[](const OwningScalarVoxel<glm::vec2>& a) {
+				return "<RadFiled3D.OwningVec2Voxel (" + std::to_string(a.get_data().x) + ", " + std::to_string(a.get_data().y) + ")>";
+			}
+		);
+
+    py::class_<ScalarVoxel<glm::vec3>, std::shared_ptr<ScalarVoxel<glm::vec3>>, IVoxel>(m, "Vec3Voxel")
         .def("get_data", &ScalarVoxel<glm::vec3>::get_data, py::return_value_policy::reference)
         .def("set_data", [](ScalarVoxel<glm::vec3>& v, const glm::vec3& value) {
             v = value;
@@ -888,11 +907,25 @@ PYBIND11_MODULE(RadFiled3D, m) {
         .def(py::self -= py::self)
         .def("__repr__",
             [](const ScalarVoxel<glm::vec3>& a) {
-                return "<RadiationData.Vec3Voxel (" + std::to_string(a.get_data().x) + ", " + std::to_string(a.get_data().y) + ", " + std::to_string(a.get_data().z) + ")>";
+                return "<RadFiled3D.Vec3Voxel (" + std::to_string(a.get_data().x) + ", " + std::to_string(a.get_data().y) + ", " + std::to_string(a.get_data().z) + ")>";
             }
         );
 
-    py::class_<ScalarVoxel<glm::vec4>, IVoxel>(m, "Vec4Voxel")
+	py::class_<OwningScalarVoxel<glm::vec3>, std::shared_ptr<OwningScalarVoxel<glm::vec3>>, ScalarVoxel<glm::vec3>>(m, "OwningVec3Voxel")
+		.def("get_data", &OwningScalarVoxel<glm::vec3>::get_data, py::return_value_policy::reference)
+		.def("set_data", &OwningScalarVoxel<glm::vec3>::set_data)
+		.def(py::self == py::self)
+		.def(py::self /= py::self)
+		.def(py::self *= py::self)
+		.def(py::self += py::self)
+		.def(py::self -= py::self)
+		.def("__repr__",
+			[](const OwningScalarVoxel<glm::vec3>& a) {
+				return "<RadFiled3D.OwningVec3Voxel (" + std::to_string(a.get_data().x) + ", " + std::to_string(a.get_data().y) + ", " + std::to_string(a.get_data().z) + ")>";
+			}
+		);
+
+    py::class_<ScalarVoxel<glm::vec4>, std::shared_ptr<ScalarVoxel<glm::vec4>>, IVoxel>(m, "Vec4Voxel")
         .def("get_data", &ScalarVoxel<glm::vec4>::get_data, py::return_value_policy::reference)
         .def("set_data", [](ScalarVoxel<glm::vec4>& v, const glm::vec4& value) {
             v = value;
@@ -904,11 +937,25 @@ PYBIND11_MODULE(RadFiled3D, m) {
         .def(py::self -= py::self)
         .def("__repr__",
             [](const ScalarVoxel<glm::vec4>& a) {
-                return "<RadiationData.Vec4Voxel (" + std::to_string(a.get_data().x) + ", " + std::to_string(a.get_data().y) + ", " + std::to_string(a.get_data().z) + ", " + std::to_string(a.get_data().w) + ")>";
+                return "<RadFiled3D.Vec4Voxel (" + std::to_string(a.get_data().x) + ", " + std::to_string(a.get_data().y) + ", " + std::to_string(a.get_data().z) + ", " + std::to_string(a.get_data().w) + ")>";
             }
         );
 
-    py::class_<HistogramVoxel, IVoxel>(m, "HistogramVoxel")
+	py::class_<OwningScalarVoxel<glm::vec4>, std::shared_ptr<OwningScalarVoxel<glm::vec4>>, ScalarVoxel<glm::vec4>>(m, "OwningVec4Voxel")
+		.def("get_data", &OwningScalarVoxel<glm::vec4>::get_data, py::return_value_policy::reference)
+		.def("set_data", &OwningScalarVoxel<glm::vec4>::set_data)
+		.def(py::self == py::self)
+		.def(py::self /= py::self)
+		.def(py::self *= py::self)
+		.def(py::self += py::self)
+		.def(py::self -= py::self)
+		.def("__repr__",
+			[](const OwningScalarVoxel<glm::vec4>& a) {
+				return "<RadFiled3D.OwningVec4Voxel (" + std::to_string(a.get_data().x) + ", " + std::to_string(a.get_data().y) + ", " + std::to_string(a.get_data().z) + ", " + std::to_string(a.get_data().w) + ")>";
+			}
+		);
+
+    py::class_<HistogramVoxel, std::shared_ptr<HistogramVoxel>, IVoxel>(m, "HistogramVoxel")
         .def("get_histogram_bin_width", &HistogramVoxel::get_histogram_bin_width)
         .def("get_bins", &HistogramVoxel::get_bins)
         .def("get_histogram", [](const HistogramVoxel& a) {
@@ -928,9 +975,33 @@ PYBIND11_MODULE(RadFiled3D, m) {
             [](const HistogramVoxel& a) {
                 const size_t bins = a.get_bins();
                 const float bin_width = a.get_histogram_bin_width();
-                return "<RadiationData.HistogramVoxel (" + std::to_string(bins) + "bins @ " + std::to_string(bin_width) + " width" + ")>";
+                return "<RadFiled3D.HistogramVoxel (" + std::to_string(bins) + "bins @ " + std::to_string(bin_width) + " width" + ")>";
             }
         );
+
+	py::class_<OwningHistogramVoxel, std::shared_ptr<OwningHistogramVoxel>, HistogramVoxel>(m, "OwningHistogramVoxel")
+		.def("get_histogram_bin_width", &OwningHistogramVoxel::get_histogram_bin_width)
+		.def("get_bins", &OwningHistogramVoxel::get_bins)
+		.def("get_histogram", [](const OwningHistogramVoxel& a) {
+		auto histogram = a.get_histogram();
+		py::capsule cap(histogram.data(), [](void* data) { /* No deletion */ });
+		return py::array_t<float>(
+			{ static_cast<size_t>(histogram.size()) },  // shape
+			{ sizeof(float) },  // strides
+			histogram.data(),
+			cap
+		);
+			}, py::return_value_policy::reference)
+		.def("add_value", &OwningHistogramVoxel::add_value)
+		.def("normalize", &OwningHistogramVoxel::normalize)
+		.def(py::self == py::self)
+		.def("__repr__",
+			[](const OwningHistogramVoxel& a) {
+				const size_t bins = a.get_bins();
+				const float bin_width = a.get_histogram_bin_width();
+				return "<RadFiled3D.OwningHistogramVoxel (" + std::to_string(bins) + "bins @ " + std::to_string(bin_width) + " width" + ")>";
+			}
+		);
 
     py::enum_<GridTracerAlgorithm>(m, "GridTracerAlgorithm")
         .value("SAMPLING", GridTracerAlgorithm::SAMPLING)
@@ -1024,25 +1095,25 @@ PYBIND11_MODULE(RadFiled3D, m) {
                 const Typing::DType type = Typing::Helper::get_dtype(self.get_voxel_flat<IVoxel>(layer_name, 0).get_type());
                 switch (type) {
                     case Typing::DType::Float:
-                        return static_cast<IVoxel*>(&self.get_voxel_flat<ScalarVoxel<float>>(layer_name, idx));
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<float>>(layer_name, idx));
                     case Typing::DType::Double:
-                        return static_cast<IVoxel*>(&self.get_voxel_flat<ScalarVoxel<double>>(layer_name, idx));
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<double>>(layer_name, idx));
                     case Typing::DType::Int:
-                        return static_cast<IVoxel*>(&self.get_voxel_flat<ScalarVoxel<int>>(layer_name, idx));
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<int>>(layer_name, idx));
                     case Typing::DType::Char:
-                        return static_cast<IVoxel*>(&self.get_voxel_flat<ScalarVoxel<char>>(layer_name, idx));
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<char>>(layer_name, idx));
                     case Typing::DType::Vec2:
-                        return static_cast<IVoxel*>(&self.get_voxel_flat<ScalarVoxel<glm::vec2>>(layer_name, idx));
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<glm::vec2>>(layer_name, idx));
                     case Typing::DType::Vec3:
-                        return static_cast<IVoxel*>(&self.get_voxel_flat<ScalarVoxel<glm::vec3>>(layer_name, idx));
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<glm::vec3>>(layer_name, idx));
                     case Typing::DType::Vec4:
-                        return static_cast<IVoxel*>(&self.get_voxel_flat<ScalarVoxel<glm::vec4>>(layer_name, idx));
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<glm::vec4>>(layer_name, idx));
                     case Typing::DType::Hist:
-                        return static_cast<IVoxel*>(&self.get_voxel_flat<HistogramVoxel>(layer_name, idx));
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<HistogramVoxel>(layer_name, idx));
                     case Typing::DType::UInt64:
-                        return static_cast<IVoxel*>(&self.get_voxel_flat<ScalarVoxel<uint64_t>>(layer_name, idx));
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<uint64_t>>(layer_name, idx));
                     case Typing::DType::UInt32:
-						return static_cast<IVoxel*>(&self.get_voxel_flat<ScalarVoxel<unsigned long>>(layer_name, idx));
+						return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<unsigned long>>(layer_name, idx));
                     default:
                         throw std::runtime_error("Unsupported voxel type: " + std::to_string(static_cast<int>(type)));
                 }
@@ -1051,25 +1122,25 @@ PYBIND11_MODULE(RadFiled3D, m) {
                 const Typing::DType type = Typing::Helper::get_dtype(self.get_voxel_flat<IVoxel>(layer_name, 0).get_type());
                 switch (type) {
                     case Typing::DType::Float:
-                        return static_cast<IVoxel*>(&self.get_voxel<ScalarVoxel<float>>(layer_name, x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<float>>(layer_name, x, y, z));
                     case Typing::DType::Double:
-                        return static_cast<IVoxel*>(&self.get_voxel<ScalarVoxel<double>>(layer_name, x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<double>>(layer_name, x, y, z));
                     case Typing::DType::Int:
-                        return static_cast<IVoxel*>(&self.get_voxel<ScalarVoxel<int>>(layer_name, x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<int>>(layer_name, x, y, z));
                     case Typing::DType::Char:
-                        return static_cast<IVoxel*>(&self.get_voxel<ScalarVoxel<char>>(layer_name, x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<char>>(layer_name, x, y, z));
                     case Typing::DType::Vec2:
-                        return static_cast<IVoxel*>(&self.get_voxel<ScalarVoxel<glm::vec2>>(layer_name, x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<glm::vec2>>(layer_name, x, y, z));
                     case Typing::DType::Vec3:
-                        return static_cast<IVoxel*>(&self.get_voxel<ScalarVoxel<glm::vec3>>(layer_name, x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<glm::vec3>>(layer_name, x, y, z));
                     case Typing::DType::Vec4:
-                        return static_cast<IVoxel*>(&self.get_voxel<ScalarVoxel<glm::vec4>>(layer_name, x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<glm::vec4>>(layer_name, x, y, z));
                     case Typing::DType::Hist:
-                        return static_cast<IVoxel*>(&self.get_voxel<HistogramVoxel>(layer_name, x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<HistogramVoxel>(layer_name, x, y, z));
                     case Typing::DType::UInt64:
-                        return static_cast<IVoxel*>(&self.get_voxel<ScalarVoxel<uint64_t>>(layer_name, x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<uint64_t>>(layer_name, x, y, z));
                     case Typing::DType::UInt32:
-                        return static_cast<IVoxel*>(&self.get_voxel<ScalarVoxel<unsigned long>>(layer_name, x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<unsigned long>>(layer_name, x, y, z));
                     default:
                         throw std::runtime_error("Unsupported voxel type: " + std::to_string(static_cast<int>(type)));
                 }
@@ -1078,25 +1149,25 @@ PYBIND11_MODULE(RadFiled3D, m) {
                 const Typing::DType type = Typing::Helper::get_dtype(self.get_voxel_flat<IVoxel>(layer_name, 0).get_type());
                 switch (type) {
                     case Typing::DType::Float:
-                        return static_cast<IVoxel*>(&self.get_voxel_by_coord<ScalarVoxel<float>>(layer_name, x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<float>>(layer_name, x, y, z));
                     case Typing::DType::Double:
-                        return static_cast<IVoxel*>(&self.get_voxel_by_coord<ScalarVoxel<double>>(layer_name, x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<double>>(layer_name, x, y, z));
                     case Typing::DType::Int:
-                        return static_cast<IVoxel*>(&self.get_voxel_by_coord<ScalarVoxel<int>>(layer_name, x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<int>>(layer_name, x, y, z));
                     case Typing::DType::Char:
-                        return static_cast<IVoxel*>(&self.get_voxel_by_coord<ScalarVoxel<char>>(layer_name, x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<char>>(layer_name, x, y, z));
                     case Typing::DType::Vec2:
-                        return static_cast<IVoxel*>(&self.get_voxel_by_coord<ScalarVoxel<glm::vec2>>(layer_name, x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<glm::vec2>>(layer_name, x, y, z));
                     case Typing::DType::Vec3:
-                        return static_cast<IVoxel*>(&self.get_voxel_by_coord<ScalarVoxel<glm::vec3>>(layer_name, x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<glm::vec3>>(layer_name, x, y, z));
                     case Typing::DType::Vec4:
-                        return static_cast<IVoxel*>(&self.get_voxel_by_coord<ScalarVoxel<glm::vec4>>(layer_name, x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<glm::vec4>>(layer_name, x, y, z));
                     case Typing::DType::Hist:
-                        return static_cast<IVoxel*>(&self.get_voxel_by_coord<HistogramVoxel>(layer_name, x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<HistogramVoxel>(layer_name, x, y, z));
                     case Typing::DType::UInt64:
-                        return static_cast<IVoxel*>(&self.get_voxel_by_coord<ScalarVoxel<uint64_t>>(layer_name, x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<uint64_t>>(layer_name, x, y, z));
                     case Typing::DType::UInt32:
-						return static_cast<IVoxel*>(&self.get_voxel_by_coord<ScalarVoxel<unsigned long>>(layer_name, x, y, z));
+						return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<unsigned long>>(layer_name, x, y, z));
                     default:
                         throw std::runtime_error("Unsupported voxel type: " + std::to_string(static_cast<int>(type)));
                 }
@@ -1136,25 +1207,25 @@ PYBIND11_MODULE(RadFiled3D, m) {
                     const Typing::DType type = Typing::Helper::get_dtype(self.get_voxel_flat<IVoxel>(0).get_type());
                     switch (type) {
                     case Typing::DType::Float:
-                        return static_cast<IVoxel*>(&self.get_voxel_flat<ScalarVoxel<float>>(idx));
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<float>>(idx));
                     case Typing::DType::Double:
-                        return static_cast<IVoxel*>(&self.get_voxel_flat<ScalarVoxel<double>>(idx));
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<double>>(idx));
                     case Typing::DType::Int:
-                        return static_cast<IVoxel*>(&self.get_voxel_flat<ScalarVoxel<int>>(idx));
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<int>>(idx));
                     case Typing::DType::Char:
-                        return static_cast<IVoxel*>(&self.get_voxel_flat<ScalarVoxel<char>>(idx));
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<char>>(idx));
                     case Typing::DType::Vec2:
-                        return static_cast<IVoxel*>(&self.get_voxel_flat<ScalarVoxel<glm::vec2>>(idx));
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<glm::vec2>>(idx));
                     case Typing::DType::Vec3:
-                        return static_cast<IVoxel*>(&self.get_voxel_flat<ScalarVoxel<glm::vec3>>(idx));
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<glm::vec3>>(idx));
                     case Typing::DType::Vec4:
-                        return static_cast<IVoxel*>(&self.get_voxel_flat<ScalarVoxel<glm::vec4>>(idx));
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<glm::vec4>>(idx));
                     case Typing::DType::Hist:
-                        return static_cast<IVoxel*>(&self.get_voxel_flat<HistogramVoxel>(idx));
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<HistogramVoxel>(idx));
                     case Typing::DType::UInt64:
-                        return static_cast<IVoxel*>(&self.get_voxel_flat<ScalarVoxel<uint64_t>>(idx));
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<uint64_t>>(idx));
                     case Typing::DType::UInt32:
-                        return static_cast<IVoxel*>(&self.get_voxel_flat<ScalarVoxel<unsigned long>>(idx));
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<unsigned long>>(idx));
                     default:
                         throw std::runtime_error("Unsupported voxel type: " + std::to_string(static_cast<int>(type)));
                     }
@@ -1175,25 +1246,25 @@ PYBIND11_MODULE(RadFiled3D, m) {
                     const Typing::DType type = Typing::Helper::get_dtype(self.get_layer()->get_voxel_flat<IVoxel>(0).get_type());
                     switch (type) {
                     case Typing::DType::Float:
-                        return static_cast<IVoxel*>(&self.get_voxel<ScalarVoxel<float>>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<float>>(x, y, z));
                     case Typing::DType::Double:
-                        return static_cast<IVoxel*>(&self.get_voxel<ScalarVoxel<double>>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<double>>(x, y, z));
                     case Typing::DType::Int:
-                        return static_cast<IVoxel*>(&self.get_voxel<ScalarVoxel<int>>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<int>>(x, y, z));
                     case Typing::DType::Char:
-                        return static_cast<IVoxel*>(&self.get_voxel<ScalarVoxel<char>>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<char>>(x, y, z));
                     case Typing::DType::Vec2:
-                        return static_cast<IVoxel*>(&self.get_voxel<ScalarVoxel<glm::vec2>>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<glm::vec2>>(x, y, z));
                     case Typing::DType::Vec3:
-                        return static_cast<IVoxel*>(&self.get_voxel<ScalarVoxel<glm::vec3>>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<glm::vec3>>(x, y, z));
                     case Typing::DType::Vec4:
-                        return static_cast<IVoxel*>(&self.get_voxel<ScalarVoxel<glm::vec4>>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<glm::vec4>>(x, y, z));
                     case Typing::DType::Hist:
-                        return static_cast<IVoxel*>(&self.get_voxel<HistogramVoxel>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<HistogramVoxel>(x, y, z));
                     case Typing::DType::UInt64:
-                        return static_cast<IVoxel*>(&self.get_voxel<ScalarVoxel<uint64_t>>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<uint64_t>>(x, y, z));
                     case Typing::DType::UInt32:
-                        return static_cast<IVoxel*>(&self.get_voxel<ScalarVoxel<unsigned long>>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<unsigned long>>(x, y, z));
                     default:
                         throw std::runtime_error("Unsupported voxel type: " + std::to_string(static_cast<int>(type)));
                     }
@@ -1202,25 +1273,25 @@ PYBIND11_MODULE(RadFiled3D, m) {
                     const Typing::DType type = Typing::Helper::get_dtype(self.get_layer()->get_voxel_flat<IVoxel>(0).get_type());
                     switch (type) {
                     case Typing::DType::Float:
-                        return static_cast<IVoxel*>(&self.get_voxel_by_coord<ScalarVoxel<float>>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<float>>(x, y, z));
                     case Typing::DType::Double:
-                        return static_cast<IVoxel*>(&self.get_voxel_by_coord<ScalarVoxel<double>>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<double>>(x, y, z));
                     case Typing::DType::Int:
-                        return static_cast<IVoxel*>(&self.get_voxel_by_coord<ScalarVoxel<int>>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<int>>(x, y, z));
                     case Typing::DType::Char:
-                        return static_cast<IVoxel*>(&self.get_voxel_by_coord<ScalarVoxel<char>>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<char>>(x, y, z));
                     case Typing::DType::Vec2:
-                        return static_cast<IVoxel*>(&self.get_voxel_by_coord<ScalarVoxel<glm::vec2>>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<glm::vec2>>(x, y, z));
                     case Typing::DType::Vec3:
-                        return static_cast<IVoxel*>(&self.get_voxel_by_coord<ScalarVoxel<glm::vec3>>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<glm::vec3>>(x, y, z));
                     case Typing::DType::Vec4:
-                        return static_cast<IVoxel*>(&self.get_voxel_by_coord<ScalarVoxel<glm::vec4>>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<glm::vec4>>(x, y, z));
                     case Typing::DType::Hist:
-                        return static_cast<IVoxel*>(&self.get_voxel_by_coord<HistogramVoxel>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<HistogramVoxel>(x, y, z));
                     case Typing::DType::UInt64:
-                        return static_cast<IVoxel*>(&self.get_voxel_by_coord<ScalarVoxel<uint64_t>>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<uint64_t>>(x, y, z));
                     case Typing::DType::UInt32:
-                        return static_cast<IVoxel*>(&self.get_voxel_by_coord<ScalarVoxel<unsigned long>>(x, y, z));
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<unsigned long>>(x, y, z));
                     default:
                         throw std::runtime_error("Unsupported voxel type: " + std::to_string(static_cast<int>(type)));
                     }
@@ -1271,25 +1342,25 @@ PYBIND11_MODULE(RadFiled3D, m) {
 			    const Typing::DType type = Typing::Helper::get_dtype(self.get_layer()->get_voxel_flat<IVoxel>(0).get_type());
 			    switch (type) {
 			    case Typing::DType::Float:
-				    return static_cast<IVoxel*>(&self.get_segment<ScalarVoxel<float>>(x, y));
+				    return VOXEL_REFERENCE(&self.get_segment<ScalarVoxel<float>>(x, y));
 			    case Typing::DType::Double:
-				    return static_cast<IVoxel*>(&self.get_segment<ScalarVoxel<double>>(x, y));
+				    return VOXEL_REFERENCE(&self.get_segment<ScalarVoxel<double>>(x, y));
 			    case Typing::DType::Int:
-				    return static_cast<IVoxel*>(&self.get_segment<ScalarVoxel<int>>(x, y));
+				    return VOXEL_REFERENCE(&self.get_segment<ScalarVoxel<int>>(x, y));
 			    case Typing::DType::Char:
-				    return static_cast<IVoxel*>(&self.get_segment<ScalarVoxel<char>>(x, y));
+				    return VOXEL_REFERENCE(&self.get_segment<ScalarVoxel<char>>(x, y));
 			    case Typing::DType::Vec2:
-				    return static_cast<IVoxel*>(&self.get_segment<ScalarVoxel<glm::vec2>>(x, y));
+				    return VOXEL_REFERENCE(&self.get_segment<ScalarVoxel<glm::vec2>>(x, y));
 			    case Typing::DType::Vec3:
-				    return static_cast<IVoxel*>(&self.get_segment<ScalarVoxel<glm::vec3>>(x, y));
+				    return VOXEL_REFERENCE(&self.get_segment<ScalarVoxel<glm::vec3>>(x, y));
 			    case Typing::DType::Vec4:
-				    return static_cast<IVoxel*>(&self.get_segment<ScalarVoxel<glm::vec4>>(x, y));
+				    return VOXEL_REFERENCE(&self.get_segment<ScalarVoxel<glm::vec4>>(x, y));
 			    case Typing::DType::Hist:
-				    return static_cast<IVoxel*>(&self.get_segment<HistogramVoxel>(x, y));
+				    return VOXEL_REFERENCE(&self.get_segment<HistogramVoxel>(x, y));
 			    case Typing::DType::UInt64:
-				    return static_cast<IVoxel*>(&self.get_segment<ScalarVoxel<uint64_t>>(x, y));
+				    return VOXEL_REFERENCE(&self.get_segment<ScalarVoxel<uint64_t>>(x, y));
 			    case Typing::DType::UInt32:
-				    return static_cast<IVoxel*>(&self.get_segment<ScalarVoxel<unsigned long>>(x, y));
+				    return VOXEL_REFERENCE(&self.get_segment<ScalarVoxel<unsigned long>>(x, y));
 			    default:
 				    throw std::runtime_error("Unsupported voxel type: " + std::to_string(static_cast<int>(type)));
 			    }
@@ -1298,25 +1369,25 @@ PYBIND11_MODULE(RadFiled3D, m) {
 			    const Typing::DType type = Typing::Helper::get_dtype(self.get_layer()->get_voxel_flat<IVoxel>(0).get_type());
 			    switch (type) {
 			    case Typing::DType::Float:
-				    return static_cast<IVoxel*>(&self.get_segment_by_coord<ScalarVoxel<float>>(phi, theta));
+				    return VOXEL_REFERENCE(&self.get_segment_by_coord<ScalarVoxel<float>>(phi, theta));
 			    case Typing::DType::Double:
-				    return static_cast<IVoxel*>(&self.get_segment_by_coord<ScalarVoxel<double>>(phi, theta));
+				    return VOXEL_REFERENCE(&self.get_segment_by_coord<ScalarVoxel<double>>(phi, theta));
 			    case Typing::DType::Int:
-				    return static_cast<IVoxel*>(&self.get_segment_by_coord<ScalarVoxel<int>>(phi, theta));
+				    return VOXEL_REFERENCE(&self.get_segment_by_coord<ScalarVoxel<int>>(phi, theta));
 			    case Typing::DType::Char:
-				    return static_cast<IVoxel*>(&self.get_segment_by_coord<ScalarVoxel<char>>(phi, theta));
+				    return VOXEL_REFERENCE(&self.get_segment_by_coord<ScalarVoxel<char>>(phi, theta));
 			    case Typing::DType::Vec2:
-				    return static_cast<IVoxel*>(&self.get_segment_by_coord<ScalarVoxel<glm::vec2>>(phi, theta));
+				    return VOXEL_REFERENCE(&self.get_segment_by_coord<ScalarVoxel<glm::vec2>>(phi, theta));
 			    case Typing::DType::Vec3:
-				    return static_cast<IVoxel*>(&self.get_segment_by_coord<ScalarVoxel<glm::vec3>>(phi, theta));
+				    return VOXEL_REFERENCE(&self.get_segment_by_coord<ScalarVoxel<glm::vec3>>(phi, theta));
 			    case Typing::DType::Vec4:
-				    return static_cast<IVoxel*>(&self.get_segment_by_coord<ScalarVoxel<glm::vec4>>(phi, theta));
+				    return VOXEL_REFERENCE(&self.get_segment_by_coord<ScalarVoxel<glm::vec4>>(phi, theta));
 			    case Typing::DType::Hist:
-				    return static_cast<IVoxel*>(&self.get_segment_by_coord<HistogramVoxel>(phi, theta));
+				    return VOXEL_REFERENCE(&self.get_segment_by_coord<HistogramVoxel>(phi, theta));
 			    case Typing::DType::UInt64:
-				    return static_cast<IVoxel*>(&self.get_segment_by_coord<ScalarVoxel<uint64_t>>(phi, theta));
+				    return VOXEL_REFERENCE(&self.get_segment_by_coord<ScalarVoxel<uint64_t>>(phi, theta));
 			    case Typing::DType::UInt32:
-				    return static_cast<IVoxel*>(&self.get_segment_by_coord<ScalarVoxel<unsigned long>>(phi, theta));
+				    return VOXEL_REFERENCE(&self.get_segment_by_coord<ScalarVoxel<unsigned long>>(phi, theta));
 			    default:
 				    throw std::runtime_error("Unsupported voxel type: " + std::to_string(static_cast<int>(type)));
 			    }
@@ -1364,25 +1435,25 @@ PYBIND11_MODULE(RadFiled3D, m) {
                 const Typing::DType type = Typing::Helper::get_dtype(self.get_segment_flat<IVoxel>(layer, 0).get_type());
                 switch (type) {
                     case Typing::DType::Float:
-                        return static_cast<IVoxel*>(&self.get_segment_flat<ScalarVoxel<float>>(layer, idx));
+                        return VOXEL_REFERENCE(&self.get_segment_flat<ScalarVoxel<float>>(layer, idx));
                     case Typing::DType::Double:
-                        return static_cast<IVoxel*>(&self.get_segment_flat<ScalarVoxel<double>>(layer, idx));
+                        return VOXEL_REFERENCE(&self.get_segment_flat<ScalarVoxel<double>>(layer, idx));
                     case Typing::DType::Int:
-                        return static_cast<IVoxel*>(&self.get_segment_flat<ScalarVoxel<int>>(layer, idx));
+                        return VOXEL_REFERENCE(&self.get_segment_flat<ScalarVoxel<int>>(layer, idx));
                     case Typing::DType::Char:
-                        return static_cast<IVoxel*>(&self.get_segment_flat<ScalarVoxel<char>>(layer, idx));
+                        return VOXEL_REFERENCE(&self.get_segment_flat<ScalarVoxel<char>>(layer, idx));
                     case Typing::DType::Vec2:
-                        return static_cast<IVoxel*>(&self.get_segment_flat<ScalarVoxel<glm::vec2>>(layer, idx));
+                        return VOXEL_REFERENCE(&self.get_segment_flat<ScalarVoxel<glm::vec2>>(layer, idx));
                     case Typing::DType::Vec3:
-                        return static_cast<IVoxel*>(&self.get_segment_flat<ScalarVoxel<glm::vec3>>(layer, idx));
+                        return VOXEL_REFERENCE(&self.get_segment_flat<ScalarVoxel<glm::vec3>>(layer, idx));
                     case Typing::DType::Vec4:
-                        return static_cast<IVoxel*>(&self.get_segment_flat<ScalarVoxel<glm::vec4>>(layer, idx));
+                        return VOXEL_REFERENCE(&self.get_segment_flat<ScalarVoxel<glm::vec4>>(layer, idx));
                     case Typing::DType::Hist:
-                        return static_cast<IVoxel*>(&self.get_segment_flat<HistogramVoxel>(layer, idx));
+                        return VOXEL_REFERENCE(&self.get_segment_flat<HistogramVoxel>(layer, idx));
                     case Typing::DType::UInt64:
-                        return static_cast<IVoxel*>(&self.get_segment_flat<ScalarVoxel<uint64_t>>(layer, idx));
+                        return VOXEL_REFERENCE(&self.get_segment_flat<ScalarVoxel<uint64_t>>(layer, idx));
                     case Typing::DType::UInt32:
-                        return static_cast<IVoxel*>(&self.get_segment_flat<ScalarVoxel<unsigned long>>(layer, idx));
+                        return VOXEL_REFERENCE(&self.get_segment_flat<ScalarVoxel<unsigned long>>(layer, idx));
                     default:
                         throw std::runtime_error("Unsupported segment type: " + std::to_string(static_cast<int>(type)));
                 }
@@ -1391,25 +1462,25 @@ PYBIND11_MODULE(RadFiled3D, m) {
                 const Typing::DType type = Typing::Helper::get_dtype(self.get_segment_flat<IVoxel>(layer, 0).get_type());
                 switch (type) {
                     case Typing::DType::Float:
-						return static_cast<IVoxel*>(&self.get_segment_by_coord<ScalarVoxel<float>>(layer, phi, theta));
+						return VOXEL_REFERENCE(&self.get_segment_by_coord<ScalarVoxel<float>>(layer, phi, theta));
                     case Typing::DType::Double:
-                        return static_cast<IVoxel*>(&self.get_segment_by_coord<ScalarVoxel<double>>(layer, phi, theta));
+                        return VOXEL_REFERENCE(&self.get_segment_by_coord<ScalarVoxel<double>>(layer, phi, theta));
                     case Typing::DType::Int:
-						return static_cast<IVoxel*>(&self.get_segment_by_coord<ScalarVoxel<int>>(layer, phi, theta));
+						return VOXEL_REFERENCE(&self.get_segment_by_coord<ScalarVoxel<int>>(layer, phi, theta));
                     case Typing::DType::Char:
-                        return static_cast<IVoxel*>(&self.get_segment_by_coord<ScalarVoxel<char>>(layer, phi, theta));
+                        return VOXEL_REFERENCE(&self.get_segment_by_coord<ScalarVoxel<char>>(layer, phi, theta));
                     case Typing::DType::Vec2:
-						return static_cast<IVoxel*>(&self.get_segment_by_coord<ScalarVoxel<glm::vec2>>(layer, phi, theta));
+						return VOXEL_REFERENCE(&self.get_segment_by_coord<ScalarVoxel<glm::vec2>>(layer, phi, theta));
                     case Typing::DType::Vec3:
-                        return static_cast<IVoxel*>(&self.get_segment_by_coord<ScalarVoxel<glm::vec3>>(layer, phi, theta));
+                        return VOXEL_REFERENCE(&self.get_segment_by_coord<ScalarVoxel<glm::vec3>>(layer, phi, theta));
                     case Typing::DType::Vec4:
-						return static_cast<IVoxel*>(&self.get_segment_by_coord<ScalarVoxel<glm::vec4>>(layer, phi, theta));
+						return VOXEL_REFERENCE(&self.get_segment_by_coord<ScalarVoxel<glm::vec4>>(layer, phi, theta));
                     case Typing::DType::Hist:
-						return static_cast<IVoxel*>(&self.get_segment_by_coord<HistogramVoxel>(layer, phi, theta));
+						return VOXEL_REFERENCE(&self.get_segment_by_coord<HistogramVoxel>(layer, phi, theta));
                     case Typing::DType::UInt64:
-                        return static_cast<IVoxel*>(&self.get_segment_by_coord<ScalarVoxel<uint64_t>>(layer, phi, theta));
+                        return VOXEL_REFERENCE(&self.get_segment_by_coord<ScalarVoxel<uint64_t>>(layer, phi, theta));
                     case Typing::DType::UInt32:
-                        return static_cast<IVoxel*>(&self.get_segment_by_coord<ScalarVoxel<unsigned long>>(layer, phi, theta));
+                        return VOXEL_REFERENCE(&self.get_segment_by_coord<ScalarVoxel<unsigned long>>(layer, phi, theta));
                     default:
                         throw std::runtime_error("Unsupported segment type: " + std::to_string(static_cast<int>(type)));
                 }
@@ -1418,25 +1489,25 @@ PYBIND11_MODULE(RadFiled3D, m) {
                 const Typing::DType type = Typing::Helper::get_dtype(self.get_voxel_flat<IVoxel>(layer, 0).get_type());
                 switch (type) {
                 case Typing::DType::Float:
-                    return static_cast<IVoxel*>(&self.get_segment<ScalarVoxel<float>>(layer, x, y));
+                    return VOXEL_REFERENCE(&self.get_segment<ScalarVoxel<float>>(layer, x, y));
                 case Typing::DType::Double:
-                    return static_cast<IVoxel*>(&self.get_segment<ScalarVoxel<double>>(layer, x, y));
+                    return VOXEL_REFERENCE(&self.get_segment<ScalarVoxel<double>>(layer, x, y));
                 case Typing::DType::Int:
-                    return static_cast<IVoxel*>(&self.get_segment<ScalarVoxel<int>>(layer, x, y));
+                    return VOXEL_REFERENCE(&self.get_segment<ScalarVoxel<int>>(layer, x, y));
                 case Typing::DType::Char:
-                    return static_cast<IVoxel*>(&self.get_segment<ScalarVoxel<char>>(layer, x, y));
+                    return VOXEL_REFERENCE(&self.get_segment<ScalarVoxel<char>>(layer, x, y));
                 case Typing::DType::Vec2:
-                    return static_cast<IVoxel*>(&self.get_segment<ScalarVoxel<glm::vec2>>(layer, x, y));
+                    return VOXEL_REFERENCE(&self.get_segment<ScalarVoxel<glm::vec2>>(layer, x, y));
                 case Typing::DType::Vec3:
-                    return static_cast<IVoxel*>(&self.get_segment<ScalarVoxel<glm::vec3>>(layer, x, y));
+                    return VOXEL_REFERENCE(&self.get_segment<ScalarVoxel<glm::vec3>>(layer, x, y));
                 case Typing::DType::Vec4:
-                    return static_cast<IVoxel*>(&self.get_segment<ScalarVoxel<glm::vec4>>(layer, x, y));
+                    return VOXEL_REFERENCE(&self.get_segment<ScalarVoxel<glm::vec4>>(layer, x, y));
                 case Typing::DType::Hist:
-                    return static_cast<IVoxel*>(&self.get_segment<HistogramVoxel>(layer, x, y));
+                    return VOXEL_REFERENCE(&self.get_segment<HistogramVoxel>(layer, x, y));
                 case Typing::DType::UInt64:
-                    return static_cast<IVoxel*>(&self.get_segment<ScalarVoxel<uint64_t>>(layer, x, y));
+                    return VOXEL_REFERENCE(&self.get_segment<ScalarVoxel<uint64_t>>(layer, x, y));
                 case Typing::DType::UInt32:
-					return static_cast<IVoxel*>(&self.get_segment<ScalarVoxel<unsigned long>>(layer, x, y));
+					return VOXEL_REFERENCE(&self.get_segment<ScalarVoxel<unsigned long>>(layer, x, y));
                 default:
                     throw std::runtime_error("Unsupported segment type: " + std::to_string(static_cast<int>(type)));
                 }
@@ -1530,7 +1601,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
                     auto field_dim   = a.get_field_dimensions();
                     auto voxel_dim   = a.get_voxel_dimensions();
                     auto voxel_count = a.get_voxel_counts();
-                    return "<RadiationData.CartesianRadiationField (" + std::to_string(field_dim.x) + " m, " + std::to_string(field_dim.y) + " m, " + std::to_string(field_dim.z) + " m) @ Voxels(" + std::to_string(voxel_dim.x) + " m, " + std::to_string(voxel_dim.y) + " m, " + std::to_string(voxel_dim.z) + " m) x (" + std::to_string(voxel_count.x) + ", " + std::to_string(voxel_count.y) + ", " + std::to_string(voxel_count.z) + ")>";
+                    return "<RadFiled3D.CartesianRadiationField (" + std::to_string(field_dim.x) + " m, " + std::to_string(field_dim.y) + " m, " + std::to_string(field_dim.z) + " m) @ Voxels(" + std::to_string(voxel_dim.x) + " m, " + std::to_string(voxel_dim.y) + " m, " + std::to_string(voxel_dim.z) + " m) x (" + std::to_string(voxel_count.x) + ", " + std::to_string(voxel_count.y) + ", " + std::to_string(voxel_count.z) + ")>";
                 }
              );
 
@@ -1565,7 +1636,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
             .def("__repr__",
                 [](const PolarRadiationField& a) {
                     auto segments = a.get_segments_count();
-                    return "<RadiationData.PolarRadiationField (" + std::to_string(segments.x) + " x " + std::to_string(segments.y) + ")>";
+                    return "<RadFiled3D.PolarRadiationField (" + std::to_string(segments.x) + " x " + std::to_string(segments.y) + ")>";
                 }
             );
 
@@ -1574,7 +1645,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
 
         py::class_<RadFiled3D::Storage::FieldAccessor, std::shared_ptr<FieldAccessor>>(m, "FieldAccessor")
 			.def(py::pickle(
-				[](std::shared_ptr<FieldAccessor> self) {
+				[](const std::shared_ptr<FieldAccessor>& self) {
                     return FieldAccessor::Serialize(self);
 				},
                 [](const std::vector<char>& bytes) {
@@ -1582,10 +1653,14 @@ PYBIND11_MODULE(RadFiled3D, m) {
 		        }
             ))
             .def("get_field_type", &FieldAccessor::getFieldType)
-			.def("access_field", [](std::shared_ptr<FieldAccessor> self, const py::bytes& bytes) {
-			    std::istringstream stream(static_cast<std::string>(bytes));
-			    return self->accessField(stream);
-			})
+            .def("access_field_from_buffer", [](const FieldAccessor& self, const py::bytes& bytes) {
+                std::istringstream stream(static_cast<std::string>(bytes));
+                return self.accessField(stream);
+            })
+            .def("access_field", [](const FieldAccessor& self, const std::string& file) {
+			    std::ifstream stream(file, std::ios::binary);
+                return self.accessField(stream);
+            })
 			.def_static("get_store_version", [](const py::bytes& bytes) {
                 std::istringstream stream(static_cast<std::string>(bytes));
 			    return FieldAccessor::getStoreVersion(stream);
@@ -1604,89 +1679,100 @@ PYBIND11_MODULE(RadFiled3D, m) {
 					field_type = "Unknown";
 					break;
 				}
-			    return std::string("<RadiationData.FieldAccessor (") + field_type + std::string(")>");
+			    return std::string("<RadFiled3D.FieldAccessor (") + field_type + std::string(")>");
 		    })
-			.def("access_voxel_flat", [](std::shared_ptr<FieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, size_t idx) {
+            .def("access_voxel_flat", [](const FieldAccessor& self, const std::string& file, const std::string& channel_name, const std::string& layer_name, size_t idx) {
+                std::ifstream stream(file, std::ios::binary);
+                return encapsulate_voxel(self.accessVoxelRawFlat(stream, channel_name, layer_name, idx));
+            })
+            .def("access_voxel_flat_from_buffer", [](const FieldAccessor& self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, size_t idx) {
                 std::istringstream stream(static_cast<std::string>(bytes));
-			    return self->accessVoxelRawFlat(stream, channel_name, layer_name, idx);
-			});
+                return encapsulate_voxel(self.accessVoxelRawFlat(stream, channel_name, layer_name, idx));
+            });
 
         py::class_<Storage::CartesianFieldAccessor, std::shared_ptr<CartesianFieldAccessor>, RadFiled3D::Storage::FieldAccessor>(m, "CartesianFieldAccessor")
-			.def("access_layer", [](std::shared_ptr<Storage::CartesianFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name) {
-                std::istringstream stream(static_cast<std::string>(bytes));
-			    return self->accessLayer(stream, channel_name, layer_name);
+            .def("access_voxel_flat", [](const Storage::CartesianFieldAccessor& self, const std::string& file, const std::string& channel_name, const std::string& layer_name, size_t idx) {
+			    std::ifstream stream(file, std::ios::binary);
+			    return encapsulate_voxel(self.accessVoxelRawFlat(stream, channel_name, layer_name, idx));
 			})
-			.def("access_channel", [](std::shared_ptr<Storage::CartesianFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name) {
-                std::istringstream stream(static_cast<std::string>(bytes));
-			    return self->accessChannel(stream, channel_name);
+			.def("access_voxel_flat_from_buffer", [](const Storage::CartesianFieldAccessor& self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, size_t idx) {
+			    std::istringstream stream(static_cast<std::string>(bytes));
+                return encapsulate_voxel(self.accessVoxelRawFlat(stream, channel_name, layer_name, idx));
 			})
-			.def("access_voxel", [](std::shared_ptr<Storage::CartesianFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, const glm::uvec3& coord) {
-                std::istringstream stream(static_cast<std::string>(bytes));
-			    return self->accessVoxelRaw(stream, channel_name, layer_name, coord);
+            .def("access_field", [](const Storage::CartesianFieldAccessor& self, const std::string& file) {
+			    std::ifstream stream(file, std::ios::binary);
+			    return self.accessField(stream);
+		    })
+			.def("access_field_from_buffer", [](const Storage::CartesianFieldAccessor& self, const py::bytes& bytes) {
+			    std::istringstream stream(static_cast<std::string>(bytes));
+			    return self.accessField(stream);
 			})
-			.def("__repr__", [](const CartesianFieldAccessor& a) {
-                auto voxels = a.getVoxelCount();
-			    return std::string("<RadiationData.CartesianFieldAccessor (voxels: ") + std::to_string(voxels) + std::string(")>");
-			})
-			.def("access_voxel_by_coord", [](std::shared_ptr<Storage::CartesianFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, const glm::vec3& coord) {
+            .def("access_layer_from_buffer", [](const Storage::CartesianFieldAccessor& self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name) {
                 std::istringstream stream(static_cast<std::string>(bytes));
-			    return self->accessVoxelRawByCoord(stream, channel_name, layer_name, coord);
+			    return self.accessLayer(stream, channel_name, layer_name);
+			})
+			.def("access_layer", [](const Storage::CartesianFieldAccessor& self, const std::string& file, const std::string& channel_name, const std::string& layer_name) {
+			    std::ifstream stream(file, std::ios::binary);
+			    return self.accessLayer(stream, channel_name, layer_name);
+		    })
+			.def("access_channel", [](const Storage::CartesianFieldAccessor& self, const std::string& file, const std::string& channel_name) {
+			    std::ifstream stream(file, std::ios::binary);
+			    return self.accessChannel(stream, channel_name);
+			})
+            .def("access_channel_from_buffer", [](const Storage::CartesianFieldAccessor& self, const py::bytes& bytes, const std::string& channel_name) {
+                std::istringstream stream(static_cast<std::string>(bytes));
+                return self.accessChannel(stream, channel_name);
+            })
+			.def("access_voxel", [](const Storage::CartesianFieldAccessor& self, const std::string& file, const std::string& channel_name, const std::string& layer_name, const glm::uvec3& coord) {
+			    std::ifstream stream(static_cast<std::string>(file), std::ios::binary);
+			    return encapsulate_voxel(self.accessVoxelRaw(stream, channel_name, layer_name, coord));
+			})
+            .def("access_voxel_from_buffer", [](const Storage::CartesianFieldAccessor& self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, const glm::uvec3& coord) {
+                std::istringstream stream(static_cast<std::string>(bytes));
+                return encapsulate_voxel(self.accessVoxelRaw(stream, channel_name, layer_name, coord));
+            })
+			.def("__repr__", [](const Storage::CartesianFieldAccessor& self) {
+                auto voxels = self.getVoxelCount();
+			    return std::string("<RadFiled3D.CartesianFieldAccessor (voxels: ") + std::to_string(voxels) + std::string(")>");
+			})
+			.def("access_voxel_by_coord_from_buffer", [](const Storage::CartesianFieldAccessor& self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, const glm::vec3& coord) {
+                std::istringstream stream(static_cast<std::string>(bytes));
+			    return encapsulate_voxel(self.accessVoxelRawByCoord(stream, channel_name, layer_name, coord));
+			})
+            .def("access_voxel_by_coord", [](const Storage::CartesianFieldAccessor& self, const std::string& file, const std::string& channel_name, const std::string& layer_name, const glm::vec3& coord) {
+			    std::ifstream stream(file, std::ios::binary);
+                return encapsulate_voxel(self.accessVoxelRawByCoord(stream, channel_name, layer_name, coord));
+            });
+        
+		py::class_<Storage::V1::CartesianFieldAccessor, std::shared_ptr<Storage::V1::CartesianFieldAccessor>, Storage::CartesianFieldAccessor>(m, "CartesianFieldAccessorV1")
+			.def("__repr__", [](const V1::CartesianFieldAccessor& self) {
+			    auto voxels = self.getVoxelCount();
+				return std::string("<RadFiled3D.CartesianFieldAccessorV1 (voxels: ") + std::to_string(voxels) + std::string(")>");
 			});
 
-		py::class_<V1::CartesianFieldAccessor, std::shared_ptr<V1::CartesianFieldAccessor>, Storage::CartesianFieldAccessor>(m, "CartesianFieldAccessorV1")
-            .def("access_layer", [](std::shared_ptr<Storage::V1::CartesianFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name) {
+		py::class_<Storage::PolarFieldAccessor, std::shared_ptr<PolarFieldAccessor>, Storage::FieldAccessor>(m, "PolarFieldAccessor")
+            .def("access_layer", [](const PolarFieldAccessor& self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name) {
                 std::istringstream stream(static_cast<std::string>(bytes));
-                return self->accessLayer(stream, channel_name, layer_name);
+                return self.accessLayer(stream, channel_name, layer_name);
             })
-			.def("access_channel", [](std::shared_ptr<Storage::V1::CartesianFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name) {
+			.def("access_voxel", [](const PolarFieldAccessor& self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, const glm::uvec2& coord) {
                 std::istringstream stream(static_cast<std::string>(bytes));
-			    return self->accessChannel(stream, channel_name);
-			})
-			.def("access_voxel", [](std::shared_ptr<Storage::V1::CartesianFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, const glm::uvec3& coord) {
-                std::istringstream stream(static_cast<std::string>(bytes));
-				return self->accessVoxelRaw(stream, channel_name, layer_name, coord);
-		    })
-			.def("__repr__", [](const V1::CartesianFieldAccessor& a) {
-			    auto voxels = a.getVoxelCount();
-			    return std::string("<RadiationData.CartesianFieldAccessorV1 (voxels: ") + std::to_string(voxels) + std::string(")>");
-			})
-			.def("access_voxel_by_coord", [](std::shared_ptr<Storage::V1::CartesianFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, const glm::vec3& coord) {
-                std::istringstream stream(static_cast<std::string>(bytes));
-			    return self->accessVoxelRawByCoord(stream, channel_name, layer_name, coord);
-		    });
-
-		py::class_<Storage::PolarFieldAccessor, std::shared_ptr<Storage::PolarFieldAccessor>, Storage::FieldAccessor>(m, "PolarFieldAccessor")
-            .def("access_layer", [](std::shared_ptr<Storage::V1::PolarFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name) {
-                std::istringstream stream(static_cast<std::string>(bytes));
-                return self->accessLayer(stream, channel_name, layer_name);
-            })
-			.def("access_voxel", [](std::shared_ptr<Storage::PolarFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, const glm::uvec2& coord) {
-                std::istringstream stream(static_cast<std::string>(bytes));
-			    return self->accessVoxelRaw(stream, channel_name, layer_name, coord);
+			    return encapsulate_voxel(self.accessVoxelRaw(stream, channel_name, layer_name, coord));
 		    })
 			.def("__repr__", [](const PolarFieldAccessor& a) {
 			    auto voxels = a.getVoxelCount();
-			    return std::string("<RadiationData.PolarFieldAccessor (voxels: ") + std::to_string(voxels) + std::string(")>");
+			    return std::string("<RadFiled3D.PolarFieldAccessor (voxels: ") + std::to_string(voxels) + std::string(")>");
 		    })
-			.def("access_voxel_by_coord", [](std::shared_ptr<Storage::PolarFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, const glm::vec2& coord) {
+			.def("access_voxel_by_coord", [](const PolarFieldAccessor& self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, const glm::vec2& coord) {
                 std::istringstream stream(static_cast<std::string>(bytes));
-			    return self->accessVoxelRawByCoord(stream, channel_name, layer_name, coord);
+			    return encapsulate_voxel(self.accessVoxelRawByCoord(stream, channel_name, layer_name, coord));
 			});
 
 		py::class_<V1::PolarFieldAccessor, std::shared_ptr<V1::PolarFieldAccessor>, Storage::PolarFieldAccessor>(m, "PolarFieldAccessorV1")
-			.def("access_layer", [](std::shared_ptr<Storage::V1::PolarFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name) {
-                std::istringstream stream(static_cast<std::string>(bytes));
-			    return self->accessLayer(stream, channel_name, layer_name);
-			})
-			.def("access_voxel", [](std::shared_ptr<Storage::V1::PolarFieldAccessor> self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, const glm::uvec2& coord) {
-                std::istringstream stream(static_cast<std::string>(bytes));
-			    return self->accessVoxelRaw(stream, channel_name, layer_name, coord);
-			})
 			.def("__repr__", [](const V1::PolarFieldAccessor& a) {
 			    auto voxels = a.getVoxelCount();
-			    return std::string("<RadiationData.PolarFieldAccessorV1 (voxels: ") + std::to_string(voxels) + std::string(")>");
-			})
-			.def("access_voxel_by_coord", &V1::PolarFieldAccessor::accessVoxelRawByCoord);
+			    return std::string("<RadFiled3D.PolarFieldAccessorV1 (voxels: ") + std::to_string(voxels) + std::string(")>");
+			});
 
         py::class_<Storage::FieldStore>(m, "FieldStore")
             .def_static("init_store_instance", &Storage::FieldStore::init_store_instance)
@@ -1711,10 +1797,11 @@ PYBIND11_MODULE(RadFiled3D, m) {
             .def_static("join", &FieldStore::join, py::arg("field"), py::arg("metadata"), py::arg("file"), py::arg("join_mode") = FieldJoinMode::Add, py::arg("check_mode") = FieldJoinCheckMode::MetadataSimulationSimilar, py::arg("fallback_version") = StoreVersion::V1)
             .def_static("peek_field_type", &FieldStore::peek_field_type)
             .def_static("construct_field_accessor", [](const std::string& file) {
-                return FieldStore::construct_accessor(file);
+			    std::ifstream stream(file, std::ios::binary);
+                return FieldStore::construct_accessor(stream);
             })
-            .def_static("construct_field_accessor_from_buffer", [](const std::string& bytes) {
-			    std::istringstream stream(bytes);
+            .def_static("construct_field_accessor_from_buffer", [](const py::bytes& bytes) {
+			    std::istringstream stream(static_cast<std::string>(bytes));
                 return FieldStore::construct_accessor(stream);
             })
             .def_static("load_single_grid_layer", [](const std::string& file, const std::string& channel_name, const std::string& layer_name) -> std::shared_ptr<VoxelGrid> {

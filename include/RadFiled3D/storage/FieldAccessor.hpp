@@ -79,6 +79,8 @@ namespace RadFiled3D {
 				size_t metadata_fileheader_size;
 				size_t voxel_count;
 
+				virtual ~SerializationData() {}
+
 				SerializationData(StoreVersion store_version, FieldType field_type, size_t metadata_fileheader_size, size_t voxel_count)
 					: store_version(store_version), field_type(field_type), metadata_fileheader_size(metadata_fileheader_size), voxel_count(voxel_count) {};
 
@@ -118,6 +120,8 @@ namespace RadFiled3D {
 			/** Initializes the accessor from a template buffer. */
 			virtual void initialize(std::istream& buffer) = 0;
 		public:
+			virtual ~FieldAccessor() {};
+
 			static std::vector<char> Serialize(std::shared_ptr<FieldAccessor> accessor);
 
 			static std::shared_ptr<FieldAccessor> Deserialize(const std::vector<char>& buffer);
@@ -202,10 +206,24 @@ namespace RadFiled3D {
 
 			CartesianFieldAccessor(FieldType field_type) : FieldAccessor(field_type), field_dimensions(glm::vec3(0.0f)), voxel_dimensions(glm::vec3(0.0f)) { };
 		public:
+			virtual ~CartesianFieldAccessor() {};
+
 			virtual IVoxel* accessVoxelRaw(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const glm::uvec3& voxel_idx) const = 0;
 			virtual IVoxel* accessVoxelRawByCoord(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const glm::vec3& voxel_pos) const = 0;
 
+			/** access a channel from a buffer and return a shared pointer to it
+			* @param buffer The buffer to access the channel from
+			* @param channel_name The name of the channel to access
+			* @return A shared pointer to the channel container
+			*/
 			virtual std::shared_ptr<VoxelGridBuffer> accessChannel(std::istream& buffer, const std::string& channel_name) const = 0;
+
+			/** access a layer from a buffer and return a shared pointer to it
+			* @param buffer The buffer to access the layer from
+			* @param channel_name The name of the channel the layer is in
+			* @param layer_name The name of the layer to access
+			* @return A shared pointer to the layer
+			*/
 			virtual std::shared_ptr<VoxelGrid> accessLayer(std::istream& buffer, const std::string& channel_name, const std::string& layer_name) const = 0;
 
 			template<typename dtype, typename VoxelT = ScalarVoxel<dtype>>
@@ -248,7 +266,15 @@ namespace RadFiled3D {
 			virtual IVoxel* accessVoxelRaw(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const glm::uvec2& voxel_idx) const = 0;
 			virtual IVoxel* accessVoxelRawByCoord(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const glm::vec2& voxel_pos) const = 0;
 
+			virtual ~PolarFieldAccessor() {};
+
 		public:
+			/** access a layer from a buffer and return a shared pointer to it
+			* @param buffer The buffer to access the layer from
+			* @param channel_name The name of the channel the layer is in
+			* @param layer_name The name of the layer to access
+			* @return A shared pointer to the layer
+			*/
 			virtual std::shared_ptr<PolarSegments> accessLayer(std::istream& buffer, const std::string& channel_name, const std::string& layer_name) const = 0;
 
 			template<typename dtype, typename VoxelT = ScalarVoxel<dtype>>
@@ -329,6 +355,9 @@ namespace RadFiled3D {
 				virtual SerializationData* generateSerializationBuffer() const override {
 					return new SerializationData(this->store_version, this->getFieldType(), this->metadata_fileheader_size, this->voxel_count, this->field_dimensions, this->voxel_dimensions, this->channels_layers_offsets);
 				}
+
+
+				virtual ~CartesianFieldAccessor() {};
 			};
 
 			class PolarFieldAccessor : public RadFiled3D::Storage::PolarFieldAccessor, public FileParser {
@@ -373,6 +402,8 @@ namespace RadFiled3D {
 				virtual SerializationData* generateSerializationBuffer() const override {
 					return new SerializationData(this->store_version, this->getFieldType(), this->metadata_fileheader_size, this->voxel_count, this->segments_counts, this->channels_layers_offsets);
 				}
+
+				virtual ~PolarFieldAccessor() {};
 			};
 		};
 

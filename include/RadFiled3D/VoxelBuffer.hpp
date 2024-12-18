@@ -284,7 +284,7 @@ namespace RadFiled3D {
 			char* data_buffer = new char[data_buffer_size];
 
 			for (size_t i = 0; i < this->voxel_count; i++) {
-				std::memcpy(voxels + i * vx_bytes, voxel_template, vx_bytes);
+				std::memcpy(voxels + i * vx_bytes, (void*)voxel_template, vx_bytes);
 				std::memcpy(data_buffer + i * data_bytes, initial_data, data_bytes);
 				((IVoxel*)(voxels + i * vx_bytes))->set_data((void*)(data_buffer + i * data_bytes));
 			}

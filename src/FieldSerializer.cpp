@@ -4,7 +4,7 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
-#include <cstring>
+#include <string.h>
 #include <RadFiled3D/helpers/Typing.hpp>
 #include <RadFiled3D/RadiationField.hpp>
 
@@ -108,7 +108,11 @@ VoxelLayer* Storage::V1::BinayFieldBlockHandler::deserializeLayer(char* data, si
 		layer = VoxelLayer::ConstructFromBufferRaw<float>(std::string(layer_desc.unit), voxel_count, layer_desc.statistical_error, data + mem_pos, true);
 		break;
 	case Typing::DType::Double:
+#if defined(__x86_64__) || defined(_M_X64)
 		layer = VoxelLayer::ConstructFromBufferRaw<double>(std::string(layer_desc.unit), voxel_count, layer_desc.statistical_error, data + mem_pos, true);
+#else
+		throw std::runtime_error("Can't load 64-bit file in 32-bit system!");
+#endif
 		break;
 	case Typing::DType::Int:
 		layer = VoxelLayer::ConstructFromBufferRaw<int>(std::string(layer_desc.unit), voxel_count, layer_desc.statistical_error, data + mem_pos, true);
@@ -131,10 +135,14 @@ VoxelLayer* Storage::V1::BinayFieldBlockHandler::deserializeLayer(char* data, si
 		layer = VoxelLayer::ConstructFromBufferRaw<float, HistogramVoxel>(std::string(layer_desc.unit), voxel_count, layer_desc.statistical_error, data + mem_pos, true, hist_template);
 		break;
 	case Typing::DType::UInt64:
+#if defined(__x86_64__) || defined(_M_X64)
 		layer = VoxelLayer::ConstructFromBufferRaw<uint64_t>(std::string(layer_desc.unit), voxel_count, layer_desc.statistical_error, data + mem_pos, true);
+#else
+		throw std::runtime_error("Can't load 64-bit file in 32-bit system!");
+#endif
 		break;
 	case Typing::DType::UInt32:
-		layer = VoxelLayer::ConstructFromBufferRaw<unsigned long>(std::string(layer_desc.unit), voxel_count, layer_desc.statistical_error, data + mem_pos, true);
+		layer = VoxelLayer::ConstructFromBufferRaw<uint32_t>(std::string(layer_desc.unit), voxel_count, layer_desc.statistical_error, data + mem_pos, true);
 		break;
 	default:
 		throw std::runtime_error("Failed to find data-type for layer! Data-type was: " + std::string(layer_desc.dtype));
@@ -162,7 +170,11 @@ std::shared_ptr<VoxelBuffer> Storage::V1::BinayFieldBlockHandler::deserializeCha
 				destination->add_layer<float>(std::string(layer_desc.name), 0.f, layer_desc.unit);
 				break;
 			case Typing::DType::Double:
+#if defined(__x86_64__) || defined(_M_X64)
 				destination->add_layer<double>(std::string(layer_desc.name), 0.0, layer_desc.unit);
+#else
+				throw std::runtime_error("Can't load 64-bit file in 32-bit system!");
+#endif
 				break;
 			case Typing::DType::Int:
 				destination->add_layer<int>(std::string(layer_desc.name), 0, layer_desc.unit);
@@ -183,10 +195,14 @@ std::shared_ptr<VoxelBuffer> Storage::V1::BinayFieldBlockHandler::deserializeCha
 				Storage::V1::BinayFieldBlockHandler::add_hist_layer(destination, std::string(layer_desc.name), layer_desc.bytes_per_element, 0, layer_desc.unit, header_data);
 				break;
 			case Typing::DType::UInt64:
+#if defined(__x86_64__) || defined(_M_X64)
 				destination->add_layer<uint64_t>(std::string(layer_desc.name), 0, layer_desc.unit);
+#else
+				throw std::runtime_error("Can't load 64-bit file in 32-bit system!");
+#endif
 				break;
 			case Typing::DType::UInt32:
-				destination->add_layer<unsigned long>(std::string(layer_desc.name), 0, layer_desc.unit);
+				destination->add_layer<uint32_t>(std::string(layer_desc.name), 0, layer_desc.unit);
 				break;
 			default:
 				std::string msg = "Failed to find data-type for layer: '" + std::string(layer_desc.name) + "' and dtype: '" + std::string(layer_desc.dtype) + "'";

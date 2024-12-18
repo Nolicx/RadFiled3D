@@ -106,7 +106,7 @@ namespace {
 		ScalarVoxel<float>& vx = channel->get_voxel_flat<ScalarVoxel<float>>("doserate", 20);
 		vx = 10.f;
 
-		channel = std::static_pointer_cast<VoxelGridBuffer>(field->add_channel("empty"));
+		std::static_pointer_cast<VoxelGridBuffer>(field->add_channel("empty"));
 
 		std::shared_ptr<RadFiled3D::Storage::V1::RadiationFieldMetadata> metadata = std::make_shared<RadFiled3D::Storage::V1::RadiationFieldMetadata>(
 			RadFiled3D::Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Simulation(
@@ -136,14 +136,13 @@ namespace {
 
 		file = std::ifstream("test01.rf3", std::ios::binary);
 		std::shared_ptr<VoxelGridBuffer> channel2 = std::dynamic_pointer_cast<CartesianFieldAccessor>(accessor)->accessChannel(file, "test_channel");
-		auto channel1 = field->get_channel("test_channel");
 
 
-		EXPECT_EQ(channel1->get_layers(), channel2->get_layers());
-		EXPECT_EQ(channel1->get_voxel_counts(), channel2->get_voxel_counts());
+		EXPECT_EQ(channel->get_layers(), channel2->get_layers());
+		EXPECT_EQ(channel->get_voxel_counts(), channel2->get_voxel_counts());
 
 		for (size_t i = 0; i < field->get_voxel_counts().x * field->get_voxel_counts().y * field->get_voxel_counts().z; i++) {
-			float val1 = channel1->get_voxel_flat<ScalarVoxel<float>>("doserate", i).get_data();
+			float val1 = channel->get_voxel_flat<ScalarVoxel<float>>("doserate", i).get_data();
 			float val2 = channel2->get_voxel_flat<ScalarVoxel<float>>("doserate", i).get_data();
 			EXPECT_EQ(val1, val2);
 		}
@@ -252,6 +251,52 @@ namespace {
 			float val2 = voxel->get_data();
 			EXPECT_EQ(val1, val2);
 		}
+	}
+
+	TEST(Storage, AccessingFromStringStream) {
+		std::shared_ptr<CartesianRadiationField> field = std::make_shared<CartesianRadiationField>(glm::vec3(2.5f), glm::vec3(0.05f));
+		std::shared_ptr<VoxelGridBuffer> channel = std::static_pointer_cast<VoxelGridBuffer>(field->add_channel("test_channel"));
+
+		channel->add_layer<glm::vec3>("dirs", glm::vec3(0.f), "normalized direction");
+		channel->add_layer<float>("doserate", 25.3f, "Gy/s");
+		channel->add_custom_layer<HistogramVoxel>("spectra", HistogramVoxel(26, 10.f, nullptr), .123f, "");
+
+		ScalarVoxel<float>& vx = channel->get_voxel_flat<ScalarVoxel<float>>("doserate", 20);
+		vx = 10.f;
+
+		field->add_channel("empty");
+
+		std::shared_ptr<RadFiled3D::Storage::V1::RadiationFieldMetadata> metadata = std::make_shared<RadFiled3D::Storage::V1::RadiationFieldMetadata>(
+			RadFiled3D::Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Simulation(
+				100,
+				"geom",
+				"FTFP_BERT",
+				RadFiled3D::Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Simulation::XRayTube(
+					glm::vec3(1.f, 0.f, 0.f),
+					glm::vec3(0.f, 0.f, 0.f),
+					100.f,
+					"XRayTube"
+				)
+			),
+			RadFiled3D::Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Software(
+				"test",
+				"1.0",
+				"repo",
+				"commit"
+			)
+		);
+
+		EXPECT_NO_THROW(FieldStore::store(field, metadata, "test01.rf3", StoreVersion::V1));
+
+		std::ifstream file("test01.rf3", std::ios::binary);
+		std::istringstream stream(std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>()));
+		std::shared_ptr<CartesianFieldAccessor> accessor = std::dynamic_pointer_cast<CartesianFieldAccessor>(FieldStore::construct_accessor(stream));
+
+		file = std::ifstream("test01.rf3", std::ios::binary);
+		stream = std::istringstream(std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>()));
+
+		auto channel2 = accessor->accessChannel(stream, "test_channel");
+		EXPECT_EQ(channel->get_layers(), channel2->get_layers());
 	}
 
 

@@ -1,6 +1,51 @@
 from RadFiled3D.RadFiled3D import CartesianRadiationField, FieldStore, CartesianFieldAccessor, StoreVersion, DType, vec3, uvec3, RadiationFieldMetadataV1, RadiationFieldSoftwareMetadataV1, RadiationFieldXRayTubeMetadataV1, RadiationFieldSimulationMetadataV1
 
 
+def setup_test_file(name: str):
+    field = CartesianRadiationField(vec3(1, 1, 1), vec3(0.1, 0.1, 0.1))
+    field.add_channel("channel1")
+    field.get_channel("channel1").add_layer("doserate", "Gy/s", DType.FLOAT32)
+    assert field.get_channel("channel1").get_layer_unit("doserate") == "Gy/s"
+    assert field.get_field_dimensions() == vec3(1, 1, 1)
+    assert field.get_voxel_dimensions() == vec3(0.1, 0.1, 0.1)
+    assert field.get_voxel_counts() == uvec3(10, 10, 10)
+
+    array = field.get_channel("channel1").get_layer_as_ndarray("doserate")
+    assert array.shape == (10, 10, 10)
+    assert array.dtype == "float32"
+
+    array[:, :, :] = 1.0
+
+    array[2:5, 2:5, 2:5] = 2.0
+
+    array = field.get_channel("channel1").get_layer_as_ndarray("doserate")
+    assert array[0, 0, 0] == 1.0
+    assert array[2, 2, 2] == 2.0
+    assert array.min() == 1.0
+    assert array.max() == 2.0
+
+    metadata = RadiationFieldMetadataV1(
+        RadiationFieldSimulationMetadataV1(
+            100,
+            "",
+            "Phys",
+            RadiationFieldXRayTubeMetadataV1(
+                vec3(0, 0, 0),
+                vec3(0, 0, 0),
+                0,
+                "TubeID"
+            )
+        ),
+        RadiationFieldSoftwareMetadataV1(
+            "RadFiled3D",
+            "0.1.0",
+            "repo",
+            "commit"
+        )
+    )
+    FieldStore.store(field, metadata, name, StoreVersion.V1)
+
+
 def test_creation():
     field = CartesianRadiationField(vec3(1, 1, 1), vec3(0.1, 0.1, 0.1))
     field.add_channel("channel1")
@@ -203,54 +248,29 @@ def test_store_and_load():
     assert (arr2[0, 0, 0] == 1.0)
 
 
-def test_single_layer_loading():
-    field = CartesianRadiationField(vec3(1, 1, 1), vec3(0.1, 0.1, 0.1))
-    field.add_channel("channel1")
-    field.get_channel("channel1").add_layer("doserate", "Gy/s", DType.FLOAT32)
-    assert field.get_channel("channel1").get_layer_unit("doserate") == "Gy/s"
-    assert field.get_field_dimensions() == vec3(1, 1, 1)
-    assert field.get_voxel_dimensions() == vec3(0.1, 0.1, 0.1)
-    assert field.get_voxel_counts() == uvec3(10, 10, 10)
-
-    array = field.get_channel("channel1").get_layer_as_ndarray("doserate")
-    assert array.shape == (10, 10, 10)
-    assert array.dtype == "float32"
-
-    array[:, :, :] = 1.0
-
-    array[2:5, 2:5, 2:5] = 2.0
-
-    array = field.get_channel("channel1").get_layer_as_ndarray("doserate")
-    assert array[0, 0, 0] == 1.0
-    assert array[2, 2, 2] == 2.0
-    assert array.min() == 1.0
-    assert array.max() == 2.0
-
-    metadata = RadiationFieldMetadataV1(
-        RadiationFieldSimulationMetadataV1(
-            100,
-            "",
-            "Phys",
-            RadiationFieldXRayTubeMetadataV1(
-                vec3(0, 0, 0),
-                vec3(0, 0, 0),
-                0,
-                "TubeID"
-            )
-        ),
-        RadiationFieldSoftwareMetadataV1(
-            "RadFiled3D",
-            "0.1.0",
-            "repo",
-            "commit"
-        )
-    )
-    FieldStore.store(field, metadata, "test03.rf3", StoreVersion.V1)
-
+def test_single_channel_loading():
+    setup_test_file("test03.rf3")
     accessor: CartesianFieldAccessor = FieldStore.construct_field_accessor("test03.rf3")
-
     data = open("test03.rf3", "rb").read()
-    doserate = accessor.access_layer(data, "channel1", "doserate")
+    
+    field_from_file = accessor.access_field("test03.rf3")
+    field_from_buffer = accessor.access_field_from_buffer(data)
+    channels_ff = field_from_file.get_channel_names()
+    channels_fb = field_from_buffer.get_channel_names()
+    assert len(channels_ff) == len(channels_fb)
+    assert "channel1" in channels_ff
+    assert "channel1" in channels_fb
+    channel = accessor.access_channel("test03.rf3", "channel1")
+    assert channel.has_layer("doserate")
+    channel_fb = accessor.access_channel_from_buffer(data, "channel1")
+    assert channel_fb.has_layer("doserate")
+
+def test_single_layer_loading():
+    setup_test_file("test03.rf3")
+    accessor: CartesianFieldAccessor = FieldStore.construct_field_accessor("test03.rf3")
+    data = open("test03.rf3", "rb").read()
+    
+    doserate = accessor.access_layer_from_buffer(data, "channel1", "doserate")
     doserate = doserate.get_as_ndarray()
     assert doserate.shape == (10, 10, 10)
     assert doserate.dtype == "float32"
@@ -258,4 +278,34 @@ def test_single_layer_loading():
     assert doserate[2, 2, 2] == 2.0
     assert doserate.min() == 1.0
     assert doserate.max() == 2.0
-    assert (doserate == array).all()
+
+    doserate = accessor.access_layer("test03.rf3", "channel1", "doserate")
+    doserate = doserate.get_as_ndarray()
+    assert doserate.shape == (10, 10, 10)
+    assert doserate.dtype == "float32"
+    assert doserate[0, 0, 0] == 1.0
+    assert doserate[2, 2, 2] == 2.0
+    assert doserate.min() == 1.0
+    assert doserate.max() == 2.0
+
+def test_single_voxel_loading():
+    setup_test_file("test03.rf3")
+    accessor: CartesianFieldAccessor = FieldStore.construct_field_accessor("test03.rf3")
+    data = open("test03.rf3", "rb").read()
+    
+    vx = accessor.access_voxel_flat("test03.rf3", "channel1", "doserate", 0)
+    vx_data = vx.get_data()
+    assert vx_data == 1.0
+    vx = accessor.access_voxel_flat_from_buffer(data, "channel1", "doserate", 0)
+    assert vx.get_data() == 1.0
+
+    vx = accessor.access_voxel_from_buffer(data, "channel1", "doserate", uvec3(0, 0, 0))
+    vx_data = vx.get_data()
+    assert vx_data == 1.0
+    vx = accessor.access_voxel("test03.rf3", "channel1", "doserate", uvec3(0, 0, 0))
+    assert vx.get_data() == 1.0
+
+    vx = accessor.access_voxel_by_coord("test03.rf3", "channel1", "doserate", vec3(0.5, 0.5, 0.5))
+    assert vx.get_data() == 1.0
+    vx = accessor.access_voxel_by_coord_from_buffer(data, "channel1", "doserate", vec3(0.5, 0.5, 0.5))
+    assert vx.get_data() == 1.0

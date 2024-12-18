@@ -81,13 +81,13 @@ namespace RadFiled3D {
 
 							XRayTube() = default;
 							XRayTube(const glm::vec3& radiation_direction, const glm::vec3& radiation_origin, float max_energy_eV, const std::string& tube_id) : radiation_direction(radiation_direction), radiation_origin(radiation_origin), max_energy_eV(max_energy_eV) {
-								strncpy(this->tube_id, tube_id.c_str(), std::min<size_t>(sizeof(this->tube_id), tube_id.length()));
+								strncpy_s(this->tube_id, tube_id.c_str(), std::min<size_t>(sizeof(this->tube_id), tube_id.length()));
 							}
 						} tube;
 						Simulation() = default;
 						Simulation(size_t primary_particle_count, const std::string& geometry, const std::string& physics_list, const XRayTube& tube) : primary_particle_count(primary_particle_count), tube(tube) {
-							strncpy(this->geometry, geometry.c_str(), std::min<size_t>(sizeof(this->geometry), geometry.length()));
-							strncpy(this->physics_list, physics_list.c_str(), std::min<size_t>(sizeof(this->physics_list), physics_list.length()));
+							strncpy_s(this->geometry, geometry.c_str(), std::min<size_t>(sizeof(this->geometry), geometry.length()));
+							strncpy_s(this->physics_list, physics_list.c_str(), std::min<size_t>(sizeof(this->physics_list), physics_list.length()));
 						}
 					} simulation;
 					struct Software {
@@ -99,11 +99,11 @@ namespace RadFiled3D {
 
 						Software() = default;
 						Software(const std::string& name, const std::string& version, const std::string& repository, const std::string& commit, const std::string& doi = "") {
-							strncpy(this->name, name.c_str(), std::min<size_t>(sizeof(this->name), name.length()));
-							strncpy(this->version, version.c_str(), std::min<size_t>(sizeof(this->version), version.length()));
-							strncpy(this->repository, repository.c_str(), std::min<size_t>(sizeof(this->repository), repository.length()));
-							strncpy(this->commit, commit.c_str(), std::min<size_t>(sizeof(this->commit), commit.length()));
-							strncpy(this->doi, doi.c_str(), std::min<size_t>(sizeof(this->doi), doi.length()));
+							strncpy_s(this->name, name.c_str(), std::min<size_t>(sizeof(this->name), name.length()));
+							strncpy_s(this->version, version.c_str(), std::min<size_t>(sizeof(this->version), version.length()));
+							strncpy_s(this->repository, repository.c_str(), std::min<size_t>(sizeof(this->repository), repository.length()));
+							strncpy_s(this->commit, commit.c_str(), std::min<size_t>(sizeof(this->commit), commit.length()));
+							strncpy_s(this->doi, doi.c_str(), std::min<size_t>(sizeof(this->doi), doi.length()));
 						}
 					} software;
 

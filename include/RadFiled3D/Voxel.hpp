@@ -69,6 +69,8 @@ namespace RadFiled3D {
 		* @param header The header to initialize the Voxel from
 		*/
 		virtual void init_from_header(const void* header) = 0;
+
+		//virtual ~IVoxel() {}
 	};
 
 	/** A ScalarVoxel is a Voxel that contains a single scalar value. It is a simple wrapper around a single value, and is used to
@@ -94,6 +96,8 @@ namespace RadFiled3D {
 		virtual void set_data(void* data) override {
 			this->data = (T*)data;
 		}
+
+		//virtual ~ScalarVoxel() override {}
 
 		/** Returns the reference to the value of the voxel
 		* @return The reference to the value of the voxel
@@ -148,7 +152,7 @@ namespace RadFiled3D {
 		* @param buffer The ScalarVoxel to copy
 		* @return A new ScalarVoxel with the same data as the given ScalarVoxel
 		*/
-		ScalarVoxel(ScalarVoxel<T>&& buffer) : data(buffer.data) {}
+		ScalarVoxel(ScalarVoxel<T>&& buffer) noexcept : data(buffer.data) {}
 
 		/** Create a new ScalarVoxel from an existing ScalarVoxel
 		* @param buffer The ScalarVoxel to copy
@@ -387,6 +391,8 @@ namespace RadFiled3D {
 	protected:
 		T physical_data;
 	public:
+		//virtual ~OwningScalarVoxel() override {}
+
 		OwningScalarVoxel() : ScalarVoxel<T>(&this->physical_data) {}
 
 		OwningScalarVoxel(T* data) : ScalarVoxel<T>(&this->physical_data) {

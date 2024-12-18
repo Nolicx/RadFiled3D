@@ -8,7 +8,9 @@ You can build and install this library and python module from source by using CM
 built automatically, but will take some time.
 
 ### Prerequisites
-- C++ Compiler (Tested with MSVC for Windows and g++ for Linux)
+- C++ Compiler
+  - g++ or clang for Linux
+  - MSVC or clang from Visual Studio 2022 for Windows
 - CMake >= 3.30
 - Python >= 3.11
 

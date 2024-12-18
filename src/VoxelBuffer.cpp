@@ -188,7 +188,11 @@ VoxelBuffer& VoxelBuffer::operator+=(const VoxelBuffer& other)
 			add_layers_together<float>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
 		case Typing::DType::Double:
+#if defined(__x86_64__) || defined(_M_X64)
 			add_layers_together<double>(this_layer_data, other_layer_data, this->voxel_count);
+#else
+			throw std::runtime_error("Can't use 64-bit data type in 32-bit system!");
+#endif
 			break;
 		case Typing::DType::Int:
 			add_layers_together<int>(this_layer_data, other_layer_data, this->voxel_count);
@@ -206,10 +210,14 @@ VoxelBuffer& VoxelBuffer::operator+=(const VoxelBuffer& other)
 			add_layers_together<glm::vec4>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
 		case Typing::DType::UInt64:
+#if defined(__x86_64__) || defined(_M_X64)
 			add_layers_together<uint64_t>(this_layer_data, other_layer_data, this->voxel_count);
+#else
+			throw std::runtime_error("Can't use 64-bit data type in 32-bit system!");
+#endif
 			break;
 		case Typing::DType::UInt32:
-			add_layers_together<unsigned long>(this_layer_data, other_layer_data, this->voxel_count);
+			add_layers_together<uint32_t>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
 		case Typing::DType::Hist:
 			for (size_t i = 0; i < this->voxel_count; i++)
@@ -253,7 +261,11 @@ VoxelBuffer& VoxelBuffer::operator*=(const VoxelBuffer& other) {
 			multiply_layers_together<float>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
 		case Typing::DType::Double:
+#if defined(__x86_64__) || defined(_M_X64)
 			multiply_layers_together<double>(this_layer_data, other_layer_data, this->voxel_count);
+#else
+			throw std::runtime_error("Can't use 64-bit data type in 32-bit system!");
+#endif
 			break;
 		case Typing::DType::Int:
 			multiply_layers_together<int>(this_layer_data, other_layer_data, this->voxel_count);
@@ -271,10 +283,14 @@ VoxelBuffer& VoxelBuffer::operator*=(const VoxelBuffer& other) {
 			multiply_layers_together<glm::vec4>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
 		case Typing::DType::UInt64:
+#if defined(__x86_64__) || defined(_M_X64)
 			multiply_layers_together<uint64_t>(this_layer_data, other_layer_data, this->voxel_count);
+#else
+			throw std::runtime_error("Can't use 64-bit data type in 32-bit system!");
+#endif
 			break;
 		case Typing::DType::UInt32:
-			multiply_layers_together<unsigned long>(this_layer_data, other_layer_data, this->voxel_count);
+			multiply_layers_together<uint32_t>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
 		case Typing::DType::Hist:
 			for (size_t i = 0; i < this->voxel_count; i++)
@@ -318,7 +334,11 @@ VoxelBuffer& VoxelBuffer::operator-=(const VoxelBuffer& other) {
 			subtract_layers_together<float>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
 		case Typing::DType::Double:
+#if defined(__x86_64__) || defined(_M_X64)
 			subtract_layers_together<double>(this_layer_data, other_layer_data, this->voxel_count);
+#else
+			throw std::runtime_error("Can't use 64-bit data type in 32-bit system!");
+#endif
 			break;
 		case Typing::DType::Int:
 			subtract_layers_together<int>(this_layer_data, other_layer_data, this->voxel_count);
@@ -336,10 +356,14 @@ VoxelBuffer& VoxelBuffer::operator-=(const VoxelBuffer& other) {
 			subtract_layers_together<glm::vec4>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
 		case Typing::DType::UInt64:
+#if defined(__x86_64__) || defined(_M_X64)
 			subtract_layers_together<uint64_t>(this_layer_data, other_layer_data, this->voxel_count);
+#else
+			throw std::runtime_error("Can't use 64-bit data type in 32-bit system!");
+#endif
 			break;
 		case Typing::DType::UInt32:
-			subtract_layers_together<unsigned long>(this_layer_data, other_layer_data, this->voxel_count);
+			subtract_layers_together<uint32_t>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
 		case Typing::DType::Hist:
 			for (size_t i = 0; i < this->voxel_count; i++)
@@ -383,7 +407,11 @@ VoxelBuffer& VoxelBuffer::operator/=(const VoxelBuffer& other) {
 			divide_layers_together<float>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
 		case Typing::DType::Double:
+#if defined(__x86_64__) || defined(_M_X64)
 			divide_layers_together<double>(this_layer_data, other_layer_data, this->voxel_count);
+#else
+			throw std::runtime_error("Can't use 64-bit data type in 32-bit system!");
+#endif
 			break;
 		case Typing::DType::Int:
 			divide_layers_together<int>(this_layer_data, other_layer_data, this->voxel_count);
@@ -401,10 +429,14 @@ VoxelBuffer& VoxelBuffer::operator/=(const VoxelBuffer& other) {
 			divide_layers_together<glm::vec4>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
 		case Typing::DType::UInt64:
+#if defined(__x86_64__) || defined(_M_X64)
 			divide_layers_together<uint64_t>(this_layer_data, other_layer_data, this->voxel_count);
+#else
+			throw std::runtime_error("Can't use 64-bit data type in 32-bit system!");
+#endif
 			break;
 		case Typing::DType::UInt32:
-			divide_layers_together<unsigned long>(this_layer_data, other_layer_data, this->voxel_count);
+			divide_layers_together<uint32_t>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
 		case Typing::DType::Hist:
 			for (size_t i = 0; i < this->voxel_count; i++)
@@ -486,7 +518,7 @@ VoxelBuffer& VoxelBuffer::operator+=(const float& scalar) {
 		case Typing::DType::UInt32:
 			for (size_t i = 0; i < this->voxel_count; i++)
 			{
-				unsigned long* this_data = (unsigned long*)this_layer_data;
+				uint32_t* this_data = (uint32_t*)this_layer_data;
 				this_data[i] += scalar;
 			}
 			break;
@@ -569,7 +601,7 @@ VoxelBuffer& VoxelBuffer::operator-=(const float& scalar) {
 		case Typing::DType::UInt32:
 			for (size_t i = 0; i < this->voxel_count; i++)
 			{
-				unsigned long* this_data = (unsigned long*)this_layer_data;
+				uint32_t* this_data = (uint32_t*)this_layer_data;
 				this_data[i] -= scalar;
 			}
 			break;
@@ -652,7 +684,7 @@ VoxelBuffer& VoxelBuffer::operator*=(const float& scalar) {
 		case Typing::DType::UInt32:
 			for (size_t i = 0; i < this->voxel_count; i++)
 			{
-				unsigned long* this_data = (unsigned long*)this_layer_data;
+				uint32_t* this_data = (uint32_t*)this_layer_data;
 				this_data[i] *= scalar;
 			}
 			break;
@@ -735,7 +767,7 @@ VoxelBuffer& VoxelBuffer::operator/=(const float& scalar) {
 		case Typing::DType::UInt32:
 			for (size_t i = 0; i < this->voxel_count; i++)
 			{
-				unsigned long* this_data = (unsigned long*)this_layer_data;
+				uint32_t* this_data = (uint32_t*)this_layer_data;
 				this_data[i] /= scalar;
 			}
 			break;

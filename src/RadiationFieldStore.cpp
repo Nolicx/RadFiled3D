@@ -258,7 +258,11 @@ void Storage::V1::FieldStore::join(std::shared_ptr<IRadiationField> target, std:
 					target_channel->merge_data_buffer<float>(layer_name, *channel.second.get(), ExporterHelpers::get_join_function<float>(join_mode, ratio));
 					break;
 				case Typing::DType::Double:
+#if defined(__x86_64__) || defined(_M_X64)
 					target_channel->merge_data_buffer<double>(layer_name, *channel.second.get(), ExporterHelpers::get_join_function<double>(join_mode, ratio));
+#else
+					throw RadiationFieldStoreException("Can't use 64-bit data type in 32-bit system!");
+#endif
 					break;
 				case Typing::DType::Char:
 					throw RadiationFieldStoreException("Unsupported data type 'char' for merging of layer: '" + layer_name + "' in channel: " + channel.first);
@@ -268,7 +272,11 @@ void Storage::V1::FieldStore::join(std::shared_ptr<IRadiationField> target, std:
 					target_channel->merge_data_buffer<int>(layer_name, *channel.second.get(), ExporterHelpers::get_join_function<int>(join_mode, ratio));
 					break;
 				case Typing::DType::UInt64:
+#if defined(__x86_64__) || defined(_M_X64)
 					target_channel->merge_data_buffer<uint64_t>(layer_name, *channel.second.get(), ExporterHelpers::get_join_function<uint64_t>(join_mode, ratio));
+#else
+					throw RadiationFieldStoreException("Can't use 64-bit data type in 32-bit system!");
+#endif
 					break;
 				case Typing::DType::Vec2:
 					target_channel->merge_data_buffer<glm::vec2>(layer_name, *channel.second.get(), ExporterHelpers::get_join_function<glm::vec2>(join_mode, ratio));
