@@ -113,6 +113,13 @@ for field, metadata in train_ds:
     pass
 ```
 
+### Field Structure
+RadFiled3D defines a field structure, that provides the user with the possibility to first define in which kind of space he wants to operate. Therefore one can choose between `CartesianRadiationField` and `PolarRadiationField`.
+- *CartesianRadiationField*: Segments a room defined by an extent of the room itself and each cuboid voxel into a set of voxels. Each voxel can be addressed by a 3D position (coordinate: x, y, z), a 3D index (number of the voxel in each dimension) or a flat 1D index.
+- *PolarRadiationField*: Segements the surface of a unit sphere into surface segments. Each segment (voxel) can be addressed by a 2D position (coordinate: theta, phi), a 2D index (number of the segment in each dimension) or a flat 1D index.
+
+Fields are then partitioned into channels (`VoxelGridBuffer`/`PolarSegmentsBuffer`). All channels share the same size and resolution. A channel is again partitioned into layers (`VoxelGrid`/`PolarSegment`). Each layer holds the actual voxel data and can be constructed from various data types (int, float, double, uint32_t, uint64_t, glm::vec2, glm::vec3, glm::vec4, N-D-Histogram). Additionally, a layer has a unit string assigned to it as well as a statisical uncertainty to perserve those information.
+
 ## Dependencies
 RadFiled3D comes with a possibly low amount of dependencies. We integrated the OpenGL Math Library (GLM) just to provide those datatypes out of the box and as GLM is a head-only library we suspect no issues by doing so.
 
