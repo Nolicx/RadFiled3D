@@ -8,6 +8,7 @@ import os
 import __main__
 import site
 from .cmake import CMakeBuilder
+import logging
 
 
 class BinaryDistribution(Distribution):
@@ -20,9 +21,19 @@ def write_manifest(additional_dirs: List[str]):
     if os.path.exists(m_path):
         os.remove(m_path)
 
+    m_path_drive, _ = os.path.splitdrive(m_path)
     with open(m_path, "w+") as f:
         for ad in additional_dirs:
-            p = os.path.normpath(os.path.relpath(ad, os.path.dirname(m_path)))
+            p = None
+            ad_drive, _ = os.path.splitdrive(ad) if os.path.isabs(ad) else (None, None)
+            if ad_drive != m_path_drive:
+                if ad_drive is not None:
+                    p = os.path.normpath(ad)
+                else:
+                    logging.warning(f"Path {ad} is not absolute, it will be ignored")
+                    continue
+            else:
+                p = os.path.normpath(os.path.relpath(ad, os.path.dirname(m_path)))
             f.write(f"graft {p}\n")
 
 
