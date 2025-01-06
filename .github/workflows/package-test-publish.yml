@@ -62,6 +62,8 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
     - name: Build RadFiled3D Wheel
+      env:
+        CIBW_BUILD_FRONTEND: "build; args: --no-isolation"
       run: |
         python -m pip install setuptools wheel build cibuildwheel
         cibuildwheel --output-dir dist/
