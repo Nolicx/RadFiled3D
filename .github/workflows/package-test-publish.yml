@@ -33,9 +33,6 @@ jobs:
       run: |
         python -m pip install setuptools wheel build
         python -m build --wheel --no-isolation
-    - name: Install built wheel ${{ matrix.python-version }}
-      run: |
-          python -m pip install ./dist/*.whl
     - name: Lint with flake8
       run: |
         python -m pip install flake8
@@ -46,7 +43,7 @@ jobs:
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: build-windows-artifact
+        name: build-windows-artifact-${{ matrix.python-version }}
         path: dist/*.whl
   build-linux:
     runs-on: ubuntu-latest
@@ -83,7 +80,7 @@ jobs:
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: build-linux-artifact
+        name: build-linux-artifact-${{ matrix.python-version }}
         path: dist/*.whl
   test-linux:
     strategy:
@@ -104,16 +101,20 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: build-linux-artifact
+          name: build-linux-artifact-${{ matrix.python-version }}
           path: dist/
       - name: Install built wheel ${{ matrix.python-version }}
         run: |
           python -m pip install ./dist/*.whl
       - name: Test with pytest
         run: |
-          python -m pip install pytest
+          python -m pip install pytest numpy
           python -m pytest tests/
   test-windows:
+    strategy:
+      max-parallel: 5
+      matrix:
+        python-version: [3.12]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: windows-latest
     name: Test on Windows ${{ matrix.python-version }}
@@ -128,16 +129,20 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: build-windows-artifact
+          name: build-windows-artifact-${{ matrix.python-version }}
           path: dist/
       - name: Install built wheel ${{ matrix.python-version }}
         run: |
           python -m pip install ./dist/*.whl
       - name: Test with pytest
         run: |
-          python -m pip install pytest
+          python -m pip install pytest numpy
           python -m pytest tests/
   publish-linux:
+    strategy:
+      max-parallel: 5
+      matrix:
+        python-version: [3.12]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     name: Publish on Linux ${{ matrix.python-version }}
@@ -156,11 +161,15 @@ jobs:
       - name: Download all the dists
         uses: actions/download-artifact@v4
         with:
-          name: build-linux-artifact
+          name: build-linux-artifact-${{ matrix.python-version }}
           path: dist/
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
   publish-windows:
+    strategy:
+      max-parallel: 5
+      matrix:
+        python-version: [3.12]
     runs-on: windows-latest
     if: startsWith(github.ref, 'refs/tags/')
     name: Publish on Windows ${{ matrix.python-version }}
@@ -179,6 +188,6 @@ jobs:
       - name: Download all the dists
         uses: actions/download-artifact@v4
         with:
-          name: build-windows-artifact
+          name: build-windows-artifact-${{ matrix.python-version }}
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
