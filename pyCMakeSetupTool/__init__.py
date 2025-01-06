@@ -3,6 +3,7 @@ from typing import List, Tuple
 import os
 import __main__
 from .cmake import CMakeBuilder
+import re
 
 
 class BinaryDistribution(Distribution):
@@ -44,6 +45,9 @@ def setup(
         version = os.environ.get("CI_COMMIT_REF_NAME")
     elif os.environ.get("GITHUB_REF") is not None: # Github Actions
         version = os.environ.get("GITHUB_REF").split("/")[-1]
+
+    if re.match(r"\d+\.\d+\.\d+", version) is None:
+        version = "0.0.0"
 
     ext_modules: List[Tuple[str, str]] = []
     additional_folders = []
