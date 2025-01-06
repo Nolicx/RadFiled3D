@@ -64,7 +64,7 @@ jobs:
         python -m build --wheel --no-isolation
     - name: Install built wheel ${{ matrix.python-version }}
       run: |
-        python -m pip install ./dist/*-${{ matrix.python-version }}-*.whl
+        python -m pip install ./dist/*.whl
     - name: Lint with flake8
       run: |
         python -m pip install flake8
@@ -81,7 +81,7 @@ jobs:
     steps:
       - name: Install built wheel ${{ matrix.python-version }}
         run: |
-          python -m pip install ./dist/*-${{ matrix.python-version }}-*.whl
+          python -m pip install ./dist/*-${{ github.ref }}-*.whl
       - name: Test with pytest
         run: |
           python -m pip install pytest
@@ -95,7 +95,7 @@ jobs:
     steps:
       - name: Install built wheel ${{ matrix.python-version }}
         run: |
-          python -m pip install ./dist/*-${{ matrix.python-version }}-*.whl
+          python -m pip install ./dist/*-${{ github.ref }}-*.whl
       - name: Test with pytest
         run: |
           python -m pip install pytest
