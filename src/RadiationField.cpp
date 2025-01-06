@@ -1,4 +1,6 @@
 #include "RadFiled3D/RadiationField.hpp"
+#include <limits>
+#include <type_traits>
 
 
 using namespace RadFiled3D;
@@ -7,7 +9,7 @@ using namespace RadFiled3D;
 CartesianRadiationField::CartesianRadiationField(const glm::vec3& field_dimensions, const glm::vec3& voxel_dimensions)
 	: voxel_dimensions(voxel_dimensions),
 	  field_dimensions(field_dimensions),
-	  voxel_counts(glm::uvec3(field_dimensions / voxel_dimensions))
+	  voxel_counts(glm::uvec3((field_dimensions + glm::vec3(std::numeric_limits<float>::epsilon())) / voxel_dimensions))
 {
 }
 

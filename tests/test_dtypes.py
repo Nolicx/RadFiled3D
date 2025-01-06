@@ -1,4 +1,5 @@
-from RadFiled3D.RadFiled3D import vec2, vec3, vec4, uvec3
+from RadFiled3D.RadFiled3D import vec2, vec3, vec4, uvec3, CartesianRadiationField
+import numpy as np
 
 
 def test_vec2():
@@ -59,3 +60,22 @@ def test_uvec3():
     assert v1 / 2 == uvec3(0, 1, 1)
     assert v1 * 2 == uvec3(2, 4, 6)
     assert v1 / 2 == uvec3(0, 1, 1)
+
+def test_radfield():
+    field_dim = vec3(10, 10, 10)
+    voxel_dim = vec3(1, 1, 1)
+    field = CartesianRadiationField(field_dim, voxel_dim)
+    field_voxels_count = field.get_voxel_counts()
+    assert field_voxels_count.x == 10 and field_voxels_count.y == 10 and field_voxels_count.z == 10
+
+    field_dim = vec3(0.768, 0.2, 0.768)
+    voxel_dim = vec3(0.003, 0.004, 0.003)
+    field = CartesianRadiationField(field_dim, voxel_dim)
+    field_voxels_count = field.get_voxel_counts()
+    assert field_voxels_count.x == 256 and field_voxels_count.y == 50 and field_voxels_count.z == 256
+
+    field_dim = vec3(0.768, 0.204, 0.768)
+    voxel_dim = vec3(0.003, 0.004, 0.003)
+    field = CartesianRadiationField(field_dim, voxel_dim)
+    field_voxels_count = field.get_voxel_counts()
+    assert field_voxels_count.x == 256 and field_voxels_count.y == 51 and field_voxels_count.z == 256
