@@ -5,6 +5,10 @@
 #include <memory>
 #include <stdexcept>
 
+#ifdef __linux__
+#define strncpy_s(dest, src, count) strncpy(dest, src, count)
+#endif
+
 namespace RadFiled3D {
 	class RadiationFieldStoreException : public std::runtime_error {
 	public:
