@@ -84,7 +84,7 @@ jobs:
     steps:
       - name: Install built wheel ${{ matrix.python-version }}
         run: |
-          TAG_NAME=${{ github.ref }} && TAG_NAME=${TAG_NAME##*/} && python -m pip install ./dist/*-${TAG_NAME}-*.whl
+          python -m pip install ./dist/*.whl
       - name: Test with pytest
         run: |
           python -m pip install pytest
@@ -98,7 +98,7 @@ jobs:
     steps:
       - name: Install built wheel ${{ matrix.python-version }}
         run: |
-          TAG_NAME=${{ github.ref }} && TAG_NAME=${TAG_NAME##*/} && python -m pip install ./dist/*-${TAG_NAME}-*.whl
+          python -m pip install ./dist/*.whl
       - name: Test with pytest
         run: |
           python -m pip install pytest
