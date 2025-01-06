@@ -52,7 +52,7 @@ jobs:
   build-linux:
     runs-on: ubuntu-latest
     container:
-      image: quay.io/pypa/manylinux2014_x86_64
+      image: manylinux_x86_64
     strategy:
       max-parallel: 5
       matrix:
@@ -142,7 +142,7 @@ jobs:
   publish-linux:
     runs-on: ubuntu-latest
     container:
-      image: quay.io/pypa/manylinux2014_x86_64
+      image: manylinux_x86_64
     strategy:
       max-parallel: 5
       matrix:
