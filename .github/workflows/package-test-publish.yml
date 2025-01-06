@@ -34,7 +34,7 @@ jobs:
         python -m pip install setuptools wheel build
         python -m build --wheel --no-isolation
     - name: Install built wheel ${{ matrix.python-version }}
-        run: |
+      run: |
           python -m pip install ./dist/*.whl
     - name: Lint with flake8
       run: |
