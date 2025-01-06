@@ -38,8 +38,12 @@ def setup(
     cmake_builder: CMakeBuilder = None
     ) -> None:
 
-    if os.environ.get("CI_COMMIT_TAG") is not None:
+    if os.environ.get("CI_COMMIT_TAG") is not None: # Gitlab CI
         version = os.environ.get("CI_COMMIT_TAG")
+    elif os.environ.get("CI_COMMIT_REF_NAME") is not None: # Gitlab CI
+        version = os.environ.get("CI_COMMIT_REF_NAME")
+    elif os.environ.get("GITHUB_REF") is not None: # Github Actions
+        version = os.environ.get("GITHUB_REF").split("/")[-1]
 
     ext_modules: List[Tuple[str, str]] = []
     additional_folders = []
