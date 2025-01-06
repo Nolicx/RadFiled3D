@@ -122,8 +122,8 @@ import os
             if os.name == 'nt' and self.is_clang_installed():
                 cmake_config_args += ["-T", "ClangCL"]
             
-            # Check if the system is 64-bit and add architecture
-            if platform.machine().endswith('64'):
+            # Check if the system is 64-bit and add architecture, if is windows system
+            if platform.machine().endswith('64') and os.name == 'nt':
                 cmake_config_args += ['-A', 'x64']
             
             if len(self.cmake_parameters_configure) > 0:
