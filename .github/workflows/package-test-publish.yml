@@ -52,7 +52,7 @@ jobs:
   build-linux:
     runs-on: ubuntu-latest
     container:
-      image: iree-org/manylinux_x86_64
+      image: pythonpillow/manylinux2014-wheel-build:main
     strategy:
       max-parallel: 5
       matrix:
@@ -142,7 +142,7 @@ jobs:
   publish-linux:
     runs-on: ubuntu-latest
     container:
-      image: iree-org/manylinux_x86_64
+      image: pythonpillow/manylinux2014-wheel-build:main
     strategy:
       max-parallel: 5
       matrix:
