@@ -86,6 +86,10 @@ jobs:
         name: build-linux-artifact
         path: dist/*.whl
   test-linux:
+    strategy:
+      max-parallel: 5
+      matrix:
+        python-version: [3.12]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     name: Test on Linux ${{ matrix.python-version }}
