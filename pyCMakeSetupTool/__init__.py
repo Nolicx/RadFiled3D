@@ -1,14 +1,8 @@
 from setuptools import setup as setup_base, find_packages, Distribution
-from setuptools.command.install import install
-from setuptools.command.build_py import build_py
-from typing import List, Tuple, Union, Type
-import importlib.metadata
-import sys
+from typing import List, Tuple
 import os
 import __main__
-import site
 from .cmake import CMakeBuilder
-import logging
 
 
 class BinaryDistribution(Distribution):
@@ -26,12 +20,8 @@ def write_manifest(additional_dirs: List[str]):
         for ad in additional_dirs:
             p = None
             ad_drive, _ = os.path.splitdrive(ad) if os.path.isabs(ad) else (None, None)
-            if ad_drive != m_path_drive:
-                if ad_drive is not None:
-                    p = os.path.normpath(ad)
-                else:
-                    logging.warning(f"Path {ad} is not absolute, it will be ignored")
-                    continue
+            if ad_drive != m_path_drive and ad_drive is not None:
+                p = os.path.normpath(ad)
             else:
                 p = os.path.normpath(os.path.relpath(ad, os.path.dirname(m_path)))
             f.write(f"graft {p}\n")
