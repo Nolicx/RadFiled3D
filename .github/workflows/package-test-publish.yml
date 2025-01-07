@@ -192,6 +192,10 @@ jobs:
           path: dist-linux/
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Publish to GitHub Packages
+        run: |
+          python -m pip install twine
+          python -m twine upload --repository-url https://upload.github.com/Centrasis/RadFiled3D/packages dist-linux/*.whl
   publish-windows:
     strategy:
       max-parallel: 5
@@ -223,3 +227,8 @@ jobs:
           $whl = Get-ChildItem -Path dist\*.whl | Select-Object -First 1
           python -m pip install twine
           python -m twine upload --repository RadFiled3D $whl.FullName
+      - name: Publish to GitHub Packages
+        run: |
+          $whl = Get-ChildItem -Path dist\*.whl | Select-Object -First 1
+          python -m pip install twine
+          python -m twine upload --repository-url https://upload.github.com/Centrasis/RadFiled3D/packages $whl.FullName
