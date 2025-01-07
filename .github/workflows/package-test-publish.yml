@@ -66,10 +66,12 @@ jobs:
         CIBW_BUILD_FRONTEND: "build"
         CIBW_ARCHS: "x86_64"
         CIBW_ENVIRONMENT_PASS_LINUX: "GITHUB_REF"
+        CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
+        CIBW_MANYLINUX_PYPY_X86_64_IMAGE: "manylinux_2_28"
         CIBW_BEFORE_ALL: "apt install -y python3-dev"
       run: |
         PYTHON_VERSION=${{ matrix.python-version }}
-        export CIBW_BUILD="cp${PYTHON_VERSION/./}-manylinux_2_*"
+        export CIBW_BUILD="cp${PYTHON_VERSION/./}-manylinux*"
         python -m pip install setuptools wheel build cibuildwheel
         cibuildwheel --output-dir dist/
     - name: Install built wheel ${{ matrix.python-version }}
