@@ -67,7 +67,7 @@ jobs:
         CIBW_BEFORE_ALL: "yum install python3-devel -y"
       run: |
         PYTHON_VERSION=${{ matrix.python-version }}
-        CIBW_BUILD="cp${PYTHON_VERSION/./}-manylinux*"
+        export CIBW_BUILD="cp${PYTHON_VERSION/./}-manylinux*"
         python -m pip install setuptools wheel build cibuildwheel
         cibuildwheel --output-dir dist/
     - name: Install built wheel ${{ matrix.python-version }}
