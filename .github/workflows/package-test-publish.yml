@@ -62,19 +62,14 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
     - name: Build RadFiled3D Wheel
+      uses: pypa/cibuildwheel@v2.22.0
       env:
         CIBW_BUILD_FRONTEND: "build"
         CIBW_ARCHS: "x86_64"
         CIBW_ENVIRONMENT_PASS_LINUX: "GITHUB_REF"
         CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_24"
-        CIBW_MANYLINUX_PYPY_X86_64_IMAGE: "manylinux_2_24"
-        CIBW_BEFORE_ALL: "apt-get -y install python3-dev"
-        CIBW_MANYLINUX_X86_64_PYTHON_INTERPRETER: "/opt/_internal/cpython-3.12.0/bin/python"
-      run: |
-        PYTHON_VERSION=${{ matrix.python-version }}
-        export CIBW_BUILD="cp${PYTHON_VERSION/./}-manylinux*"
-        python -m pip install setuptools wheel build cibuildwheel
-        cibuildwheel --output-dir dist/
+      with:
+        output-dir: dist
     - name: Install built wheel ${{ matrix.python-version }}
       run: |
         python -m pip install ./dist/*.whl
