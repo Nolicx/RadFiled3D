@@ -217,7 +217,7 @@ jobs:
           echo "[pypi]" >> ~/.pypirc
           echo "repository: https://upload.pypi.org/legacy/" >> ~/.pypirc
           echo "username: __token__" >> ~/.pypirc
-          echo "password: ${{ secrets.PYPI_TOKEN }}" >> ~/.pypirc
+          echo "password: ${{ secrets.TWINE_PASSWORD }}" >> ~/.pypirc
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
