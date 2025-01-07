@@ -41,7 +41,7 @@ class RadiationFieldDataset(Dataset):
         if self.file_paths is None and self.zip_file is not None:
             with zipfile.ZipFile(self.zip_file, 'r') as zip_ref:
                 self.file_paths = [f for f in zip_ref.namelist() if f.endswith(".rf3")]
-        elif self.file_paths is not None and self.zip_file is not None:
+        elif self.file_paths is not None and self.zip_file is None:
             pass
         else:
             raise ValueError("Either file_paths or zip_file must be provided. Best practice is to provide both.")
@@ -56,7 +56,7 @@ class RadiationFieldDataset(Dataset):
         self.field_accessor: FieldAccessor = FieldStore.construct_field_accessor_from_buffer(first_field_file_buffer)
 
     def __len__(self):
-        return len(self.file_paths)
+        return int(len(self.file_paths))
     
     def get_file_buffer(self, idx: int) -> bytes:
         if self.zip_file is not None:
@@ -202,9 +202,9 @@ class PolarFieldSingleLayerDataset(RadiationFieldDataset):
 
 class CartesianSingleVoxelDataset(CartesianFieldSingleLayerDataset):
     def __len__(self):
-        return super().__len__() * self.field_accessor.get_voxel_count()
+        return int(super().__len__() * self.field_accessor.get_voxel_count())
     
-    def _get_radiation_field(self, idx: int) -> PolarSegments:
+    def _get_radiation_field(self, idx: int) -> Voxel:
         assert self.channel_name is not None and self.layer_name is not None, "Channel and layer must be set before loading the radiation field."
         field_buffer = self.get_file_buffer(idx // self.field_accessor.get_voxel_count())
         vx_idx = idx % self.field_accessor.get_voxel_count()
@@ -216,9 +216,9 @@ class CartesianSingleVoxelDataset(CartesianFieldSingleLayerDataset):
 
 class PolarSingleVoxelDataset(PolarFieldSingleLayerDataset):
     def __len__(self):
-        return super().__len__() * self.field_accessor.get_voxel_count()
+        return int(super().__len__() * self.field_accessor.get_voxel_count())
     
-    def _get_radiation_field(self, idx: int) -> PolarSegments:
+    def _get_radiation_field(self, idx: int) -> Voxel:
         assert self.channel_name is not None and self.layer_name is not None, "Channel and layer must be set before loading the radiation field."
         field_buffer = self.get_file_buffer(idx // self.field_accessor.get_voxel_count())
         vx_idx = idx % self.field_accessor.get_voxel_count()
@@ -246,7 +246,7 @@ class DatasetBuilder(object):
             self.file_paths = [os.path.join(dataset_path, f) for f in os.listdir(dataset_path) if f.endswith(".rf3")]
             if len(self.file_paths) == 0 and os.path.isdir(os.path.join(dataset_path, "fields")) and os.path.isdir(os.path.join(dataset_path, "spectra")):
                 self.file_paths = [os.path.join(dataset_path, "fields", f) for f in os.listdir(os.path.join(dataset_path, "fields")) if f.endswith(".rf3")]
-            else:
+            elif len(self.file_paths) == 0:
                 raise FileNotFoundError(f"No radiation field files found in directory {dataset_path}.")
         elif os.path.isfile(dataset_path) and zipfile.is_zipfile(dataset_path):
             with zipfile.ZipFile(dataset_path, 'r') as zip_ref:
