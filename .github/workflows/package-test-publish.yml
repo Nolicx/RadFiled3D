@@ -226,8 +226,6 @@ jobs:
           echo "repository: https://upload.pypi.org/legacy/" >> ~/.pypirc
           echo "username: __token__" >> ~/.pypirc
           echo "password: ${{ secrets.TWINE_PASSWORD }}" >> ~/.pypirc
-          export TWINE_PASSWORD="${{ secrets.TWINE_PASSWORD }}"
-          export TWINE_USERNAME="__token__"
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
