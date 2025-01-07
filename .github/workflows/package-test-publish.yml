@@ -64,10 +64,12 @@ jobs:
     - name: Build RadFiled3D Wheel
       env:
         CIBW_BUILD_FRONTEND: "build"
-        CIBW_BEFORE_ALL: "yum install python3-devel -y"
+        CIBW_ARCHS: "x86_64"
+        CIBW_ENVIRONMENT_PASS_LINUX: "GITHUB_REF"
+        CIBW_BEFORE_ALL: "apt install -y python3-dev"
       run: |
         PYTHON_VERSION=${{ matrix.python-version }}
-        export CIBW_BUILD="cp${PYTHON_VERSION/./}-manylinux*"
+        export CIBW_BUILD="cp${PYTHON_VERSION/./}-manylinux_2_31*"
         python -m pip install setuptools wheel build cibuildwheel
         cibuildwheel --output-dir dist/
     - name: Install built wheel ${{ matrix.python-version }}
