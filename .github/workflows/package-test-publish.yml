@@ -64,12 +64,14 @@ jobs:
       uses: actions/setup-python@v3
       with:
         python-version: ${{ matrix.python-version }}
+    - name: Define CIBW_BUILD variable
+      run: export CIBW_BUILD="cp${{ matrix.python-version//. }}-*"
     - name: Build RadFiled3D Wheel
       uses: pypa/cibuildwheel@v2.22.0
       env:
         CIBW_BUILD_FRONTEND: "build"
         CIBW_ARCHS: "x86_64"
-        CIBW_ENVIRONMENT_PASS_LINUX: "GITHUB_REF"
+        CIBW_ENVIRONMENT_PASS_LINUX: "GITHUB_REF CIBW_BUILD"
         CIBW_PROJECT_REQUIRES_PYTHON: "${{ matrix.python-version }}"
         CIBW_BEFORE_ALL_LINUX: "yum install -y python3-devel python${{ matrix.python-version }}-devel"
         CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
