@@ -67,7 +67,7 @@ jobs:
     - name: Define CIBW_BUILD variable
       run: |
         PYTHON_VERSION=${{ matrix.python-version }}
-        export CIBW_BUILD="cp${PYTHON_VERSION//./}*-manylinux_x86_64"
+        export CIBW_BUILD="cp${PYTHON_VERSION//./}-manylinux_x86_64"
     - name: Build RadFiled3D Wheel
       uses: pypa/cibuildwheel@v2.22.0
       env:
