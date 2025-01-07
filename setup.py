@@ -20,6 +20,7 @@ setup(
     author_email="felix.lehner@ptb.de",
     license=open(os.path.join(os.path.dirname(__file__), "LICENSE")).read(),
     min_python="3.11",
+    description=open(os.path.join(os.path.dirname(__file__), "README.md")).read(),
     cmake_builder=CMakeBuilder(
         build_target="RadFiled3D",
         stubs_dir=os.path.join(os.path.dirname(__file__), "python/stubs"),

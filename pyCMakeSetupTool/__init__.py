@@ -34,9 +34,10 @@ def setup(
     dependencies: list[str] = [],
     min_python: str = "3.8",
     author: str = None,
+    description: str = "",
     author_email: str = None,
     license: str = None,
-    cmake_builder: CMakeBuilder = None
+    cmake_builder: CMakeBuilder = None,
     ) -> None:
 
     if os.environ.get("CI_COMMIT_TAG") is not None: # Gitlab CI
@@ -84,5 +85,6 @@ def setup(
         python_requires=f">={min_python}",
         author=author,
         license=license,
-        author_email=author_email
+        author_email=author_email,
+        description=description
     )
