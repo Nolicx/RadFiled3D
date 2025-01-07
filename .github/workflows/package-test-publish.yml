@@ -67,7 +67,6 @@ jobs:
         CIBW_BUILD_FRONTEND: "build"
         CIBW_ARCHS: "x86_64"
         CIBW_ENVIRONMENT_PASS_LINUX: "GITHUB_REF"
-        CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_24"
       with:
         output-dir: dist
     - name: Install built wheel ${{ matrix.python-version }}
