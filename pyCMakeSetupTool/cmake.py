@@ -127,14 +127,6 @@ import os
             if platform.machine().endswith('64') and os.name == 'nt':
                 cmake_config_args += ['-A', 'x64']
             
-            # Add Python library and include directory
-            python_library = sysconfig.get_config_var('LIBDIR') if "LIBDIR" in sysconfig.get_config_vars() else None
-            python_include = sysconfig.get_paths()['include'] if "include" in sysconfig.get_paths() else (sysconfig.get_paths()['platinclude'] if "platinclude" in sysconfig.get_paths() else None)
-            if python_include is not None:
-                cmake_config_args += [ f"-DPYTHON_INCLUDE_DIR={python_include}" ]
-            if python_library is not None:
-                cmake_config_args += [ f"-DPYTHON_LIBRARY={python_library}" ]
-            
             if len(self.cmake_parameters_configure) > 0:
                 for param in self.cmake_parameters_configure:
                     cmake_config_args.append(f"-D{param[0]}={param[1]}")

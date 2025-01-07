@@ -64,9 +64,6 @@ jobs:
       uses: actions/setup-python@v3
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Set PYTHONPATH
-      run: |
-        export PYTHONPATH=$(python -c "import site; print(site.getsitepackages()[0])")
     - name: Build RadFiled3D Wheel
       uses: pypa/cibuildwheel@v2.22.0
       env:
@@ -74,7 +71,7 @@ jobs:
         CIBW_ARCHS: "x86_64"
         CIBW_ENVIRONMENT_PASS_LINUX: "GITHUB_REF"
         CIBW_PROJECT_REQUIRES_PYTHON: ">=3.11"
-        PYTHONPATH: ${{ env.PYTHONPATH }}
+        CIBW_BEFORE_ALL_LINUX: "yum install -y python3-devel python${{ matrix.python-version }}-devel
       with:
         output-dir: dist
     - name: Install built wheel ${{ matrix.python-version }}
