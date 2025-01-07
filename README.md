@@ -4,6 +4,12 @@ This Repository holds the Fileformat and API according to the Paper: "RadField3D
 The aim of this library is, to provide a simple to use API for a structured, binary file format, that can store all relevant information from a three dimensional radiation field calculated by applications that use algorithms like Monte-Carlo radiation transport simulations. Such a binary file format is useful, when one needs to process a huge amount of radiation field files like when training a neural network. With that use-case in mind, RadFiled3D also provides a python interface with a pyTorch integration.
 
 ## Building and Installing
+### Installing from PyPi
+Prebuilt versions of this module for python 3.11 and 3.12 for Windows and most Linuxsystems can be installed directly by using pip.
+
+``pip install RadFiled3D``
+
+### Installing from Source
 You can build and install this library and python module from source by using CMake and a C++ compiler. The CMake Project will be 
 built automatically, but will take some time.
 
