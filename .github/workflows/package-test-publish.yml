@@ -222,6 +222,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: build-windows-artifact-${{ matrix.python-version }}
+          path: dist/
       - name: Publish to PyPI
         run: |
           $whl = Get-ChildItem -Path dist\*.whl | Select-Object -First 1
