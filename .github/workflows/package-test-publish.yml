@@ -71,7 +71,7 @@ jobs:
         CIBW_ARCHS: "x86_64"
         CIBW_ENVIRONMENT_PASS_LINUX: "GITHUB_REF"
         CIBW_PROJECT_REQUIRES_PYTHON: ">=3.11"
-        CIBW_BEFORE_ALL_LINUX: "yum install -y python3-devel python${{ matrix.python-version }}-devel
+        CIBW_BEFORE_ALL_LINUX: "yum install -y python3-devel python${{ matrix.python-version }}-devel"
       with:
         output-dir: dist
     - name: Install built wheel ${{ matrix.python-version }}
