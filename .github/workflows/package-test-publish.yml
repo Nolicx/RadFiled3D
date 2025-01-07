@@ -67,7 +67,6 @@ jobs:
         CIBW_BUILD_FRONTEND: "build"
         CIBW_ARCHS: "x86_64"
         CIBW_ENVIRONMENT_PASS_LINUX: "GITHUB_REF"
-        CIBW_BUILD: "*-manylinux_x86_64*"
         CIBW_PROJECT_REQUIRES_PYTHON: ">=3.11"
       with:
         output-dir: dist
