@@ -86,5 +86,6 @@ def setup(
         author=author,
         license=license,
         author_email=author_email,
-        description=description
+        description=description,
+        long_description=description
     )
