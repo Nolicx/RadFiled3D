@@ -54,19 +54,20 @@ jobs:
     strategy:
       max-parallel: 5
       matrix:
-        python-version: [cp312]
+        python-version: [3.12]
     steps:
     - uses: actions/checkout@v4
-    - name: Set up Python 3.12
+    - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v3
       with:
-        python-version: "3.12"
+        python-version: ${{ matrix.python-version }}
     - name: Build RadFiled3D Wheel
       env:
         CIBW_BUILD_FRONTEND: "build"
-        CIBW_BUILD: "${{ matrix.python-version }}-manylinux*"
         CIBW_BEFORE_ALL: "yum install python-devel -y"
       run: |
+        PYTHON_VERSION=${{ matrix.python-version }}
+        CIBW_BUILD="cp${PYTHON_VERSION/./}-manylinux*"
         python -m pip install setuptools wheel build cibuildwheel
         cibuildwheel --output-dir dist/
     - name: Install built wheel ${{ matrix.python-version }}
@@ -193,4 +194,7 @@ jobs:
         with:
           name: build-windows-artifact-${{ matrix.python-version }}
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        run: |
+          $whl = Get-ChildItem -Path dist\*.whl | Select-Object -First 1
+          python -m pip install twine
+          python -m twine upload --repository RadFiled3D $whl.FullName
