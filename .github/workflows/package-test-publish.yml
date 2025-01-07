@@ -52,20 +52,21 @@ jobs:
         path: dist/*.whl
   build-source:
     runs-on: ubuntu-latest
-    - uses: actions/checkout@v4
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: "3.12"
-    - name: Generate source distribution
-      run: |
-        python -m pip install setuptools
-        python setup.py sdist
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-source-artifact
-        path: dist/*.tar.gz
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.12"
+      - name: Generate source distribution
+        run: |
+          python -m pip install setuptools
+          python setup.py sdist
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-source-artifact
+          path: dist/*.tar.gz
   build-linux:
     runs-on: ubuntu-latest
     strategy:
