@@ -66,8 +66,8 @@ jobs:
         CIBW_BUILD_FRONTEND: "build"
         CIBW_ARCHS: "x86_64"
         CIBW_ENVIRONMENT_PASS_LINUX: "GITHUB_REF"
-        CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_31"
-        CIBW_MANYLINUX_PYPY_X86_64_IMAGE: "manylinux_2_31"
+        CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_24"
+        CIBW_MANYLINUX_PYPY_X86_64_IMAGE: "manylinux_2_24"
         CIBW_BEFORE_ALL: "apt-get -y install python3-dev"
       run: |
         PYTHON_VERSION=${{ matrix.python-version }}
