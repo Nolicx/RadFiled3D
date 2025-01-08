@@ -1655,7 +1655,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
 
         py::class_<RadFiled3D::Storage::FieldAccessor, std::shared_ptr<FieldAccessor>>(m, "FieldAccessor")
 			.def(py::pickle(
-				[](const std::shared_ptr<FieldAccessor>& self) {
+				[](std::shared_ptr<FieldAccessor>& self) {
                     return FieldAccessor::Serialize(self);
 				},
                 [](const std::vector<char>& bytes) {

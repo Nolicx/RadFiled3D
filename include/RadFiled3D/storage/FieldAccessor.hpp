@@ -122,7 +122,7 @@ namespace RadFiled3D {
 		public:
 			virtual ~FieldAccessor() {};
 
-			static std::vector<char> Serialize(std::shared_ptr<FieldAccessor> accessor);
+			static std::vector<char> Serialize(const std::shared_ptr<FieldAccessor> accessor);
 
 			static std::shared_ptr<FieldAccessor> Deserialize(const std::vector<char>& buffer);
 

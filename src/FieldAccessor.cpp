@@ -99,7 +99,7 @@ void RadFiled3D::Storage::V1::CartesianFieldAccessor::SerializationData::deseria
 	this->channels_layers_offsets = FileParser::DeserializeChannelsLayersOffsets(data);
 }
 
-std::vector<char> RadFiled3D::Storage::FieldAccessor::Serialize(std::shared_ptr<FieldAccessor> accessor)
+std::vector<char> RadFiled3D::Storage::FieldAccessor::Serialize(const std::shared_ptr<FieldAccessor> accessor)
 {
 	FieldAccessor::SerializationData* sdata = accessor->generateSerializationBuffer();
 	std::vector<char> additional_data = sdata->serialize_additional_data();
