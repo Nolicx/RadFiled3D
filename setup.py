@@ -14,7 +14,7 @@ setup(
     name="RadFiled3D",
     version="1.0.0",
     dependencies=[
-        "rich"
+        "rich>=13.9"
     ],
     author="Felix Lehner",
     author_email="felix.lehner@ptb.de",

@@ -94,8 +94,9 @@ from torch import Tensor
 
 # Extend one of the provided dataset classes to match the output to the current needs
 # The argument type of 'field' may vary depending on the dataset type between RadiationField (Whole field), VoxelGridBuffer (Channel), VoxelGrid (Layer) and Voxel (Single Voxel)
+# The argument idx will contain the requested index from the dataset just in case someone wants to alter the return value based on it.
 class MyLayerDataset(CartesianFieldSingleLayerDataset):
-    def transform_field(self, field: VoxelGrid) -> Tensor:
+    def transform_field(self, field: VoxelGrid, idx: int) -> Tensor:
         return load_tensor_from_layer(field)
 
 

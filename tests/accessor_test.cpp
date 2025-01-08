@@ -427,6 +427,9 @@ namespace {
 
 		std::shared_ptr<FieldAccessor> accessor = FieldStore::construct_accessor(file);
 
+		size_t vx_count = field->get_voxel_counts().x * field->get_voxel_counts().y * field->get_voxel_counts().z;
+		EXPECT_EQ(vx_count, accessor->getVoxelCount());
+
 		auto serialized = FieldAccessor::Serialize(accessor);
 
 		std::shared_ptr<V1::CartesianFieldAccessor> accessor2 = std::dynamic_pointer_cast<V1::CartesianFieldAccessor>(FieldAccessor::Deserialize(serialized));

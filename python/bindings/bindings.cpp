@@ -983,15 +983,25 @@ PYBIND11_MODULE(RadFiled3D, m) {
 		.def("get_histogram_bin_width", &OwningHistogramVoxel::get_histogram_bin_width)
 		.def("get_bins", &OwningHistogramVoxel::get_bins)
 		.def("get_histogram", [](const OwningHistogramVoxel& a) {
-		auto histogram = a.get_histogram();
-		py::capsule cap(histogram.data(), [](void* data) { /* No deletion */ });
-		return py::array_t<float>(
-			{ static_cast<size_t>(histogram.size()) },  // shape
-			{ sizeof(float) },  // strides
-			histogram.data(),
-			cap
-		);
-			}, py::return_value_policy::reference)
+		    auto histogram = a.get_histogram();
+		    py::capsule cap(histogram.data(), [](void* data) { /* No deletion */ });
+		    return py::array_t<float>(
+			    { static_cast<size_t>(histogram.size()) },  // shape
+			    { sizeof(float) },  // strides
+			    histogram.data(),
+			    cap
+		    );
+		}, py::return_value_policy::reference)
+        .def("get_data", [](const OwningHistogramVoxel& a) {
+            auto histogram = a.get_histogram();
+            py::capsule cap(histogram.data(), [](void* data) { /* No deletion */ });
+            return py::array_t<float>(
+                { static_cast<size_t>(histogram.size()) },  // shape
+                { sizeof(float) },  // strides
+                histogram.data(),
+                cap
+            );
+        }, py::return_value_policy::reference)
 		.def("add_value", &OwningHistogramVoxel::add_value)
 		.def("normalize", &OwningHistogramVoxel::normalize)
 		.def(py::self == py::self)
@@ -1652,7 +1662,9 @@ PYBIND11_MODULE(RadFiled3D, m) {
 					return FieldAccessor::Deserialize(bytes);
 		        }
             ))
-            .def("get_field_type", &FieldAccessor::getFieldType)
+            .def("get_field_type", [](const FieldAccessor& self) {
+                return self.getFieldType();
+            })
             .def("access_field_from_buffer", [](const FieldAccessor& self, const py::bytes& bytes) {
                 std::istringstream stream(static_cast<std::string>(bytes));
                 return self.accessField(stream);
@@ -1665,7 +1677,9 @@ PYBIND11_MODULE(RadFiled3D, m) {
                 std::istringstream stream(static_cast<std::string>(bytes));
 			    return FieldAccessor::getStoreVersion(stream);
 			})
-            .def("get_voxel_count", &FieldAccessor::getVoxelCount)
+            .def("get_voxel_count", [](const FieldAccessor& self) {
+                return self.getVoxelCount();
+            })
 			.def("__repr__", [](const FieldAccessor& a) {
                 std::string field_type = "";
 				switch (a.getFieldType()) {
@@ -1695,6 +1709,12 @@ PYBIND11_MODULE(RadFiled3D, m) {
 			    std::ifstream stream(file, std::ios::binary);
 			    return encapsulate_voxel(self.accessVoxelRawFlat(stream, channel_name, layer_name, idx));
 			})
+            .def("get_field_type", [](const CartesianFieldAccessor& self) {
+                return self.getFieldType();
+            })
+            .def("get_voxel_count", [](const CartesianFieldAccessor& self) {
+                return self.getVoxelCount();
+            })
 			.def("access_voxel_flat_from_buffer", [](const Storage::CartesianFieldAccessor& self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name, size_t idx) {
 			    std::istringstream stream(static_cast<std::string>(bytes));
                 return encapsulate_voxel(self.accessVoxelRawFlat(stream, channel_name, layer_name, idx));
@@ -1745,12 +1765,24 @@ PYBIND11_MODULE(RadFiled3D, m) {
             });
         
 		py::class_<Storage::V1::CartesianFieldAccessor, std::shared_ptr<Storage::V1::CartesianFieldAccessor>, Storage::CartesianFieldAccessor>(m, "CartesianFieldAccessorV1")
+            .def("get_voxel_count", [](const V1::CartesianFieldAccessor& self) {
+			    return self.getVoxelCount();
+			})
+            .def("get_field_type", [](const V1::CartesianFieldAccessor& self) {
+                return self.getFieldType();
+            })
 			.def("__repr__", [](const V1::CartesianFieldAccessor& self) {
 			    auto voxels = self.getVoxelCount();
 				return std::string("<RadFiled3D.CartesianFieldAccessorV1 (voxels: ") + std::to_string(voxels) + std::string(")>");
 			});
 
 		py::class_<Storage::PolarFieldAccessor, std::shared_ptr<PolarFieldAccessor>, Storage::FieldAccessor>(m, "PolarFieldAccessor")
+            .def("get_voxel_count", [](const PolarFieldAccessor& self) {
+                return self.getVoxelCount();
+            })
+            .def("get_field_type", [](const PolarFieldAccessor& self) {
+                return self.getFieldType();
+            })
             .def("access_layer", [](const PolarFieldAccessor& self, const py::bytes& bytes, const std::string& channel_name, const std::string& layer_name) {
                 std::istringstream stream(static_cast<std::string>(bytes));
                 return self.accessLayer(stream, channel_name, layer_name);
@@ -1769,6 +1801,12 @@ PYBIND11_MODULE(RadFiled3D, m) {
 			});
 
 		py::class_<V1::PolarFieldAccessor, std::shared_ptr<V1::PolarFieldAccessor>, Storage::PolarFieldAccessor>(m, "PolarFieldAccessorV1")
+            .def("get_voxel_count", [](const V1::PolarFieldAccessor& self) {
+                return self.getVoxelCount();
+            })
+            .def("get_field_type", [](const V1::PolarFieldAccessor& self) {
+                return self.getFieldType();
+            })
 			.def("__repr__", [](const V1::PolarFieldAccessor& a) {
 			    auto voxels = a.getVoxelCount();
 			    return std::string("<RadFiled3D.PolarFieldAccessorV1 (voxels: ") + std::to_string(voxels) + std::string(")>");

@@ -1,6 +1,7 @@
 from RadFiled3D.RadFiled3D import FieldStore, RadiationField, RadiationFieldMetadata, VoxelGrid, PolarSegments, FieldAccessor, CartesianFieldAccessor, PolarFieldAccessor, Voxel
 import zipfile
 from enum import Enum
+import torch
 import os
 from torch.utils.data import Dataset, random_split
 from typing import Type, Union, Tuple, Any
@@ -114,7 +115,7 @@ class RadiationFieldDataset(Dataset):
     def __getitem__(self, idx: int) -> Tuple[RadiationField, Union[RadiationFieldMetadata, None]]:
         field = self._get_radiation_field(idx)
         metadata = self._get_metadata(idx)
-        return (self.transform_field(field), metadata)
+        return (self.transform_field(field, idx), self.transform_metadata(metadata, idx))
     
     def __getitems__(self, indices: list[int]) -> list[Tuple[RadiationField, Union[RadiationFieldMetadata, None]]]:
         return [self.__getitem__(idx) for idx in indices]
@@ -122,13 +123,23 @@ class RadiationFieldDataset(Dataset):
     def __iter__(self):
         return RadiationFieldDatasetIterator(self)
     
-    def transform_field(self, field: RadiationField) -> Union[RadiationField, Any]:
+    def transform_field(self, field: RadiationField, idx: int) -> Union[RadiationField, Any]:
         """
         Transforms a RadiationField into a numpy array, torch tensor, VoxelGrid, PolarSegments or RadiationField. Just as needed for the training process.
         :param field: The RadiationField to transform.
+        :param idx: The index of the field in the dataset.
         :return: The transformed RadiationField.
         """
         return field
+
+    def transform_metadata(self, metadata: RadiationFieldMetadata, idx: int) -> Union[RadiationFieldMetadata, Any]:
+        """
+        Transforms a RadiationFieldMetadata object into a numpy array, torch tensor or RadiationFieldMetadata. Just as needed for the training process.
+        :param metadata: The RadiationFieldMetadata to transform.
+        :param idx: The index of the metadata in the dataset.
+        :return: The transformed RadiationFieldMetadata.
+        """
+        return metadata
 
 
 class RadiationFieldDatasetIterator:
@@ -202,7 +213,8 @@ class PolarFieldSingleLayerDataset(RadiationFieldDataset):
 
 class CartesianSingleVoxelDataset(CartesianFieldSingleLayerDataset):
     def __len__(self):
-        return int(super().__len__() * self.field_accessor.get_voxel_count())
+        vx_count = int(self.field_accessor.get_voxel_count())
+        return super().__len__() * vx_count
     
     def _get_radiation_field(self, idx: int) -> Voxel:
         assert self.channel_name is not None and self.layer_name is not None, "Channel and layer must be set before loading the radiation field."
