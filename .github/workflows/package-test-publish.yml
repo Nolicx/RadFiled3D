@@ -81,6 +81,7 @@ jobs:
         CIBW_BUILD: "${{ matrix.python-name }}-manylinux_x86_64"
         CIBW_PROJECT_REQUIRES_PYTHON: ">=3.11"
         CIBW_BEFORE_ALL_LINUX: |
+          yum update -y
           yum install -y epel-release
           yum repolist
           yum install -y python${{ matrix.python-version }}-devel
@@ -100,6 +101,7 @@ jobs:
         CIBW_BUILD: "${{ matrix.python-name }}-*"
         CIBW_PROJECT_REQUIRES_PYTHON: ">=3.11"
         CIBW_BEFORE_ALL_LINUX: |
+          yum update -y
           yum install -y epel-release
           yum repolist
           yum install -y python${{ matrix.python-version }}-devel
