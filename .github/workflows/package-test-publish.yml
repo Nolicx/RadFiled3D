@@ -9,6 +9,8 @@ jobs:
       max-parallel: 5
       matrix:
         include:
+          - python-version: 3.11
+            python-name: cp311
           - python-version: 3.12
             python-name: cp312
     steps:
@@ -50,23 +52,6 @@ jobs:
       with:
         name: build-windows-artifact-${{ matrix.python-version }}
         path: dist/*.whl
-  build-source:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v3
-        with:
-          python-version: "3.12"
-      - name: Generate source distribution
-        run: |
-          python -m pip install setuptools
-          python setup.py sdist
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-source-artifact
-          path: dist/*.tar.gz
   build-linux:
     runs-on: ubuntu-latest
     strategy:
@@ -87,7 +72,7 @@ jobs:
       run: |
         PYTHON_VERSION=${{ matrix.python-version }}
         export CIBW_BUILD="${{ matrix.python-name }}-manylinux_x86_64"
-    - name: Build RadFiled3D Wheel
+    - name: Build RadFiled3D Wheel for glibc 2.28
       uses: pypa/cibuildwheel@v2.22.0
       env:
         CIBW_BUILD_FRONTEND: "build"
@@ -103,6 +88,32 @@ jobs:
     - name: Install built wheel ${{ matrix.python-version }}
       run: |
         python -m pip install ./dist/*.whl
+    - name: Build RadFiled3D Wheel for glibc 2.34
+      uses: pypa/cibuildwheel@v2.22.0
+      env:
+        CIBW_BUILD_FRONTEND: "build"
+        CIBW_ARCHS: "x86_64"
+        CIBW_ENVIRONMENT_PASS_LINUX: "GITHUB_REF"
+        CIBW_BUILD: "${{ matrix.python-name }}-manylinux_x86_64"
+        CIBW_PROJECT_REQUIRES_PYTHON: ">=3.11"
+        CIBW_BEFORE_ALL_LINUX: "yum install -y python3-devel python${{ matrix.python-version }}-devel"
+        CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_34"
+        CIBW_MANYLINUX_PYPY_X86_64_IMAGE: "manylinux_2_34"
+      with:
+        output-dir: dist
+    - name: Build RadFiled3D Wheel for musllinux
+      uses: pypa/cibuildwheel@v2.22.0
+      env:
+        CIBW_BUILD_FRONTEND: "build"
+        CIBW_ARCHS: "x86_64"
+        CIBW_ENVIRONMENT_PASS_LINUX: "GITHUB_REF"
+        CIBW_BUILD: "${{ matrix.python-name }}-musllinux_x86_64"
+        CIBW_PROJECT_REQUIRES_PYTHON: ">=3.11"
+        CIBW_BEFORE_ALL_LINUX: "yum install -y python3-devel python${{ matrix.python-version }}-devel"
+        CIBW_MANYLINUX_X86_64_IMAGE: "musllinux_1_2"
+        CIBW_MANYLINUX_PYPY_X86_64_IMAGE: "musllinux_1_2"
+      with:
+        output-dir: dist
     - name: Lint with flake8
       run: |
         python -m pip install flake8
@@ -142,7 +153,7 @@ jobs:
           path: dist/
       - name: Install built wheel ${{ matrix.python-version }}
         run: |
-          python -m pip install ./dist/*.whl
+          python -m pip install ./dist/*manylinux_2_28_x86_64.whl
       - name: Test with pytest
         run: |
           python -m pip install pytest numpy
@@ -152,6 +163,8 @@ jobs:
       max-parallel: 5
       matrix:
         include:
+          - python-version: 3.11
+            python-name: cp312
           - python-version: 3.12
             python-name: cp312
     if: startsWith(github.ref, 'refs/tags/')
@@ -214,6 +227,8 @@ jobs:
       max-parallel: 5
       matrix:
         include:
+          - python-version: 3.11
+            python-name: cp311
           - python-version: 3.12
             python-name: cp312
     runs-on: windows-latest
@@ -253,27 +268,3 @@ jobs:
           $whl = Get-ChildItem -Path dist\*.whl | Select-Object -First 1
           python -m pip install twine
           python -m twine upload --repository RadFiled3D $whl.FullName
-  publish-source:
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    name: Publish source distribution
-    needs:
-      - build-source
-      - test-linux
-    environment:
-      name: pypi
-      url: https://pypi.org/p/RadFiled3D
-    permissions:
-      id-token: write
-    steps:
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v3
-        with:
-          python-version: "3.12"
-      - name: Download all the dists
-        uses: actions/download-artifact@v4
-        with:
-          name: build-source-artifact
-          path: dist/
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
