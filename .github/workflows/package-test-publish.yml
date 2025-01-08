@@ -104,8 +104,7 @@ jobs:
           yum update -y
           yum install -y epel-release
           yum repolist
-          yum list available | grep python
-          yum install -y python${{ matrix.python-version }}-devel
+          yum install -y python3-devel
         CIBW_MANYLINUX_X86_64_IMAGE: "manylinux2014"
         CIBW_MANYLINUX_PYPY_X86_64_IMAGE: "manylinux2014"
       with:
