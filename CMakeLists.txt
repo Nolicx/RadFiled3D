@@ -33,7 +33,7 @@ if(RS_Build_PyBindings)
 
   if(NOT Python_FOUND)
     set(DESIRED_PYTHON_VERSION ${PYTHON_VERSION})
-    find_package(Python COMPONENTS Interpreter Development REQUIRED)
+    find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
     
     if("${Python_VERSION}" MATCHES ".*${DESIRED_PYTHON_VERSION}.*")
       message(STATUS "Found suitable Python version: ${Python_VERSION}")

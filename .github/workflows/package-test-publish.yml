@@ -80,11 +80,6 @@ jobs:
         CIBW_ENVIRONMENT_PASS_LINUX: "GITHUB_REF"
         CIBW_BUILD: "${{ matrix.python-name }}-manylinux_x86_64"
         CIBW_PROJECT_REQUIRES_PYTHON: ">=3.11"
-        CIBW_BEFORE_ALL_LINUX: |
-          yum update -y
-          yum install -y epel-release
-          yum repolist
-          yum install -y python${{ matrix.python-version }}-devel
         CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
         CIBW_MANYLINUX_PYPY_X86_64_IMAGE: "manylinux_2_28"
       with:
@@ -100,11 +95,6 @@ jobs:
         CIBW_ENVIRONMENT_PASS_LINUX: "GITHUB_REF"
         CIBW_BUILD: "${{ matrix.python-name }}-*"
         CIBW_PROJECT_REQUIRES_PYTHON: ">=3.11"
-        CIBW_BEFORE_ALL_LINUX: |
-          yum update -y
-          yum install -y epel-release
-          yum repolist
-          yum install -y python3 python3-devel
         CIBW_MANYLINUX_X86_64_IMAGE: "manylinux2014"
         CIBW_MANYLINUX_PYPY_X86_64_IMAGE: "manylinux2014"
       with:
