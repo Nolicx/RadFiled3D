@@ -36,7 +36,7 @@ if(RS_Build_PyBindings)
     # if python not found abort, but if only python development components are missing, continue after getting an alternative development path
     if (NOT Python_Development_FOUND)
       message(STATUS "Python development components not found. Trying to find alternative path.")
-      find_package(Python ${PYTHON_VERSION} COMPONENTS Interpreter Development REQUIRED)
+      find_package(Python COMPONENTS Interpreter Development REQUIRED)
       message(WARNING "Python development components found, but not matching the desired version. I will try to continue...")
     endif()
     set(PYTHON_LIBRARY_DIR "${Python_SITELIB}")
