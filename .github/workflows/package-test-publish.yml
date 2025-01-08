@@ -9,10 +9,10 @@ jobs:
       max-parallel: 5
       matrix:
         include:
-          - python-version: 3.11
-            python-name: cp311
           - python-version: 3.12
             python-name: cp312
+          - python-version: 3.13
+            python-name: cp313
     steps:
     - uses: actions/checkout@v4
     - name: Install compiler
@@ -149,10 +149,10 @@ jobs:
       max-parallel: 5
       matrix:
         include:
-          - python-version: 3.11
-            python-name: cp312
           - python-version: 3.12
             python-name: cp312
+          - python-version: 3.13
+            python-name: cp313
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: windows-latest
     name: Test on Windows ${{ matrix.python-version }}
@@ -213,10 +213,10 @@ jobs:
       max-parallel: 5
       matrix:
         include:
-          - python-version: 3.11
-            python-name: cp311
           - python-version: 3.12
             python-name: cp312
+          - python-version: 3.13
+            python-name: cp313
     runs-on: windows-latest
     if: startsWith(github.ref, 'refs/tags/')
     name: Publish on Windows ${{ matrix.python-version }}
