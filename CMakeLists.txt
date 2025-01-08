@@ -32,19 +32,15 @@ if(RS_Build_PyBindings)
   set(PYBIND11_PYTHON_VERSION ${PYTHON_VERSION})
 
   if(NOT Python_FOUND)
-    find_package(Python ${PYTHON_VERSION} EXACT COMPONENTS Interpreter Development)
-    # if python not found abort, but if only python development components are missing, continue after getting an alternative development path
-    if (NOT Python_Development_FOUND)
-      # unset found python paths
-      unset(Python_DIR)
-      unset(PYTHON_DIR)
-      unset(PYTHON_LIBRARY_DIR)
-      unset(Python_SITELIB)
-      unset(Python_FOUND)
-      message(STATUS "Python development components not found. Trying to find alternative path.")
-      find_package(Python COMPONENTS Interpreter Development REQUIRED)
-      message(WARNING "Python development components found, but not matching the desired version. I will try to continue...")
+    set(DESIRED_PYTHON_VERSION ${PYTHON_VERSION})
+    find_package(Python COMPONENTS Interpreter Development REQUIRED)
+    
+    if("${Python_VERSION}" MATCHES ".*${DESIRED_PYTHON_VERSION}.*")
+      message(STATUS "Found suitable Python version: ${Python_VERSION}")
+    else()
+      message(WARNING "Desired Python version ${DESIRED_PYTHON_VERSION} not found. Found version: ${Python_VERSION}")
     endif()
+    
     set(PYTHON_LIBRARY_DIR "${Python_SITELIB}")
     message(STATUS "Found python site package: ${PYTHON_LIBRARY_DIR}")
   else()
