@@ -62,8 +62,6 @@ jobs:
             python-name: cp311
           - python-version: 3.12
             python-name: cp312
-          - python-version: 3.13
-            python-name: cp313
     steps:
     - uses: actions/checkout@v4
     - name: Set up Python ${{ matrix.python-version }}
@@ -124,8 +122,6 @@ jobs:
             python-name: cp311
           - python-version: 3.12
             python-name: cp312
-          - python-version: 3.13
-            python-name: cp313
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     name: Test on Linux ${{ matrix.python-version }}
@@ -192,8 +188,6 @@ jobs:
             python-name: cp311
           - python-version: 3.12
             python-name: cp312
-          - python-version: 3.13
-            python-name: cp313
     if: startsWith(github.ref, 'refs/tags/')
     name: Publish on Linux ${{ matrix.python-version }}
     needs:
