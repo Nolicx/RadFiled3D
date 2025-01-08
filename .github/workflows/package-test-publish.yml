@@ -62,6 +62,8 @@ jobs:
             python-name: cp311
           - python-version: 3.12
             python-name: cp312
+          - python-version: 3.13
+            python-name: cp313
     steps:
     - uses: actions/checkout@v4
     - name: Set up Python ${{ matrix.python-version }}
@@ -94,7 +96,7 @@ jobs:
         CIBW_BUILD_FRONTEND: "build"
         CIBW_ARCHS: "x86_64"
         CIBW_ENVIRONMENT_PASS_LINUX: "GITHUB_REF"
-        CIBW_BUILD: "${{ matrix.python-name }}-manylinux2014_x86_64"
+        CIBW_BUILD: "${{ matrix.python-name }}-*"
         CIBW_PROJECT_REQUIRES_PYTHON: ">=3.11"
         CIBW_BEFORE_ALL_LINUX: "yum install -y python3-devel python${{ matrix.python-version }}-devel"
         CIBW_MANYLINUX_X86_64_IMAGE: "manylinux2014"
@@ -122,6 +124,8 @@ jobs:
             python-name: cp311
           - python-version: 3.12
             python-name: cp312
+          - python-version: 3.13
+            python-name: cp313
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     name: Test on Linux ${{ matrix.python-version }}
@@ -188,6 +192,8 @@ jobs:
             python-name: cp311
           - python-version: 3.12
             python-name: cp312
+          - python-version: 3.13
+            python-name: cp313
     if: startsWith(github.ref, 'refs/tags/')
     name: Publish on Linux ${{ matrix.python-version }}
     needs:
