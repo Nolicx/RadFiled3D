@@ -126,6 +126,7 @@ typedef std::tuple<float, float, float, float> Vec4PickleTuple;
 typedef std::tuple<unsigned int, unsigned int, unsigned int, unsigned int> UVec4PickleTuple;
 typedef std::tuple<unsigned int, unsigned int, unsigned int> UVec3PickleTuple;
 typedef std::tuple<unsigned int, unsigned int> UVec2PickleTuple;
+typedef std::tuple<FieldType, std::vector<char>> FieldAccessorPickleTuple;
 
 class PyGridTracerFactory {
 public:
@@ -1655,11 +1656,23 @@ PYBIND11_MODULE(RadFiled3D, m) {
 
         py::class_<RadFiled3D::Storage::FieldAccessor, std::shared_ptr<FieldAccessor>>(m, "FieldAccessor")
 			.def(py::pickle(
-				[](std::shared_ptr<FieldAccessor>& self) {
-                    return FieldAccessor::Serialize(self);
+				[](const std::shared_ptr<FieldAccessor>& self) {
+                    std::ofstream stream("FieldAccessor_pickle.log", std::ios::app);
+                    stream << "Pickle from base FieldAccessor to tuple" << std::endl;
+                    auto data = FieldAccessor::Serialize(self);
+                    return FieldAccessorPickleTuple(self->getFieldType(), data);
 				},
-                [](const std::vector<char>& bytes) {
-					return FieldAccessor::Deserialize(bytes);
+                [](const FieldAccessorPickleTuple& t) {
+                    std::ofstream stream("FieldAccessor_pickle.log", std::ios::app);
+                    stream << "UNPickle from base FieldAccessor from tuple " << std::endl;
+					FieldType type = std::get<0>(t);
+                    if (type != FieldType::Cartesian && type != FieldType::Polar) {
+                        throw std::runtime_error("Unsupported field type: " + std::to_string(static_cast<int>(type)));
+                    }
+					if (std::get<1>(t).size() == 0) {
+						throw std::runtime_error("Empty data");
+					}
+                    return FieldAccessor::Deserialize(std::get<1>(t));
 		        }
             ))
             .def("get_field_type", [](const FieldAccessor& self) {
@@ -1705,6 +1718,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
             });
 
         py::class_<Storage::CartesianFieldAccessor, std::shared_ptr<CartesianFieldAccessor>, RadFiled3D::Storage::FieldAccessor>(m, "CartesianFieldAccessor")
+			.def(py::init([](const std::shared_ptr<FieldAccessor>& base) { return std::dynamic_pointer_cast<Storage::CartesianFieldAccessor>(base); }))
             .def("access_voxel_flat", [](const Storage::CartesianFieldAccessor& self, const std::string& file, const std::string& channel_name, const std::string& layer_name, size_t idx) {
 			    std::ifstream stream(file, std::ios::binary);
 			    return encapsulate_voxel(self.accessVoxelRawFlat(stream, channel_name, layer_name, idx));
@@ -1765,6 +1779,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
             });
         
 		py::class_<Storage::V1::CartesianFieldAccessor, std::shared_ptr<Storage::V1::CartesianFieldAccessor>, Storage::CartesianFieldAccessor>(m, "CartesianFieldAccessorV1")
+            .def(py::init([](const std::shared_ptr<FieldAccessor>& base) { return std::dynamic_pointer_cast<Storage::V1::CartesianFieldAccessor>(base); }))
             .def("get_voxel_count", [](const V1::CartesianFieldAccessor& self) {
 			    return self.getVoxelCount();
 			})

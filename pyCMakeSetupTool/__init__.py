@@ -4,6 +4,7 @@ import os
 import __main__
 from .cmake import CMakeBuilder
 import re
+import sys
 
 
 class BinaryDistribution(Distribution):
@@ -50,13 +51,19 @@ def setup(
     if re.match(r"\d+\.\d+\.\d+", version) is None:
         version = "0.0.0"
 
+    is_wheel_build = 'bdist_wheel' in sys.argv
+
     ext_modules: List[Tuple[str, str]] = []
     additional_folders = []
-    if cmake_builder is not None:
-        cmake_builder.run()
-        additional_folders.append(cmake_builder.get_build_out_dir())
-        if cmake_builder.get_binary_path() is not None:
-            ext_modules.append((name if cmake_builder.get_build_name() is None else cmake_builder.get_build_name(), cmake_builder.get_binary_path()))
+    if is_wheel_build:
+        if cmake_builder is not None:
+            cmake_builder.run()
+            additional_folders.append(cmake_builder.get_build_out_dir())
+            if cmake_builder.get_binary_path() is not None:
+                ext_modules.append((name if cmake_builder.get_build_name() is None else cmake_builder.get_build_name(), cmake_builder.get_binary_path()))
+    else:
+        # add all files and folders in the source of the cmake builder to the additional folders
+        additional_folders.append(os.path.dirname(__main__.__file__))
     
     if len(additional_folders) > 0:
         write_manifest(additional_folders)
