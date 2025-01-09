@@ -1655,16 +1655,12 @@ PYBIND11_MODULE(RadFiled3D, m) {
             .value("V1", Storage::StoreVersion::V1);
 
         py::class_<RadFiled3D::Storage::FieldAccessor, std::shared_ptr<FieldAccessor>>(m, "FieldAccessor")
-			.def(py::pickle(
+			/*.def(py::pickle(
 				[](const std::shared_ptr<FieldAccessor>& self) {
-                    std::ofstream stream("FieldAccessor_pickle.log", std::ios::app);
-                    stream << "Pickle from base FieldAccessor to tuple" << std::endl;
                     auto data = FieldAccessor::Serialize(self);
                     return FieldAccessorPickleTuple(self->getFieldType(), data);
 				},
                 [](const FieldAccessorPickleTuple& t) {
-                    std::ofstream stream("FieldAccessor_pickle.log", std::ios::app);
-                    stream << "UNPickle from base FieldAccessor from tuple " << std::endl;
 					FieldType type = std::get<0>(t);
                     if (type != FieldType::Cartesian && type != FieldType::Polar) {
                         throw std::runtime_error("Unsupported field type: " + std::to_string(static_cast<int>(type)));
@@ -1674,7 +1670,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
 					}
                     return FieldAccessor::Deserialize(std::get<1>(t));
 		        }
-            ))
+            ))*/
             .def("get_field_type", [](const FieldAccessor& self) {
                 return self.getFieldType();
             })

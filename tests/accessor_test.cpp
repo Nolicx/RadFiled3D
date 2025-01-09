@@ -358,6 +358,7 @@ namespace {
 		totalVirtualUsed_begining *= static_cast<unsigned long long>(memInfo.mem_unit);
 #endif
 
+		auto start_time = std::chrono::high_resolution_clock::now();
 		for (size_t y = 0; y < 100; y++) {
 			for (size_t i = 0; i < field->get_voxel_counts().x * field->get_voxel_counts().y * field->get_voxel_counts().z; i++) {
 				auto voxel = std::dynamic_pointer_cast<CartesianFieldAccessor>(accessor)->accessVoxelFlat<float>(file, "test_channel", "doserate", i);
@@ -366,6 +367,11 @@ namespace {
 				EXPECT_EQ(val1, val2);
 			}
 		}
+		auto end_time = std::chrono::high_resolution_clock::now();
+		auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+		std::cout << "Time to access 100 times all voxels: " << duration << "ms" << std::endl;
+		auto vx_duration = duration / (field->get_voxel_counts().x * field->get_voxel_counts().y * field->get_voxel_counts().z * 100);
+		std::cout << "Access duration per voxel: " << vx_duration << "ms" << std::endl;
 
 		unsigned long long totalVirtualUsed_end = 0;
 #ifdef _WIN32

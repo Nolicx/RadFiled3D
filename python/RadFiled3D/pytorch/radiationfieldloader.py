@@ -46,19 +46,19 @@ class RadiationFieldDataset(Dataset):
             pass
         else:
             raise ValueError("Either file_paths or zip_file must be provided. Best practice is to provide both.")
+        self._field_accessor: FieldAccessor = None
 
-        first_field_file_buffer = None
-        if self.zip_file is not None:
-            with zipfile.ZipFile(self.zip_file, 'r') as zip_ref:
-                with zip_ref.open(self.file_paths[0]) as file:
-                    first_field_file_buffer = file.read()
-        else:
-            first_field_file_buffer = open(self.file_paths[0], 'rb').read()
-        self.field_accessor: FieldAccessor = FieldStore.construct_field_accessor_from_buffer(first_field_file_buffer)
+    def _get_field_accessor(self) -> FieldAccessor:
+        if self._field_accessor is None:
+            first_field_file_buffer = self.get_file_buffer(0)
+            self._field_accessor: FieldAccessor = FieldStore.construct_field_accessor_from_buffer(first_field_file_buffer)
+        return self._field_accessor
+    
+    field_accessor: FieldAccessor = property(_get_field_accessor)
 
     def __len__(self):
-        return int(len(self.file_paths))
-    
+        return len(self.file_paths)
+
     def get_file_buffer(self, idx: int) -> bytes:
         if self.zip_file is not None:
             with zipfile.ZipFile(self.zip_file, 'r') as zip_ref:
@@ -167,9 +167,13 @@ class CartesianFieldSingleLayerDataset(RadiationFieldDataset):
 
     def __init__(self, file_paths: list[str] = None, zip_file: str = None, metadata_load_mode: MetadataLoadMode = MetadataLoadMode.HEADER):
         super().__init__(file_paths=file_paths, zip_file=zip_file, metadata_load_mode=metadata_load_mode)
-        self.field_accessor: CartesianFieldAccessor = self.field_accessor
         self.channel_name: str = None
         self.layer_name: str = None
+
+    def _get_field_accessor(self) -> CartesianFieldAccessor:
+        return super()._get_field_accessor()
+
+    field_accessor: CartesianFieldAccessor = property(_get_field_accessor)
 
     def set_channel_and_layer(self, channel_name: str, layer_name: str):
         self.channel_name = channel_name
@@ -195,7 +199,11 @@ class PolarFieldSingleLayerDataset(RadiationFieldDataset):
         super().__init__(file_paths=file_paths, zip_file=zip_file, metadata_load_mode=metadata_load_mode)
         self.channel_name: str = None
         self.layer_name: str = None
-        self.field_accessor: PolarFieldAccessor = self.field_accessor
+
+    def _get_field_accessor(self) -> PolarFieldAccessor:
+        return super()._get_field_accessor()
+
+    field_accessor: PolarFieldAccessor = property(_get_field_accessor)
 
     def set_channel_and_layer(self, channel_name: str, layer_name: str):
         self.channel_name = channel_name
@@ -214,6 +222,7 @@ class PolarFieldSingleLayerDataset(RadiationFieldDataset):
 class CartesianSingleVoxelDataset(CartesianFieldSingleLayerDataset):
     def __len__(self):
         vx_count = int(self.field_accessor.get_voxel_count())
+        self._field_accessor = None  # remove field accessor to avoid pickling issues
         return super().__len__() * vx_count
     
     def _get_radiation_field(self, idx: int) -> Voxel:
@@ -228,7 +237,9 @@ class CartesianSingleVoxelDataset(CartesianFieldSingleLayerDataset):
 
 class PolarSingleVoxelDataset(PolarFieldSingleLayerDataset):
     def __len__(self):
-        return int(super().__len__() * self.field_accessor.get_voxel_count())
+        vx_count = int(self.field_accessor.get_voxel_count())
+        self._field_accessor = None  # remove field accessor to avoid pickling issues
+        return super().__len__() * vx_count
     
     def _get_radiation_field(self, idx: int) -> Voxel:
         assert self.channel_name is not None and self.layer_name is not None, "Channel and layer must be set before loading the radiation field."
