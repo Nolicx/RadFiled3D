@@ -1,1 +1,1 @@
-from .radiationfieldloader import DatasetBuilder, RadiationFieldDataset, CartesianFieldSingleLayerDataset, MetadataLoadMode, PolarFieldSingleLayerDataset
+from .radiationfieldloader import DataLoaderBuilder, RadiationFieldDataset, CartesianFieldSingleLayerDataset, MetadataLoadMode, PolarFieldSingleLayerDataset

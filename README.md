@@ -16,48 +16,25 @@ Prebuilt versions of this module for python 3.11 and 3.12 for Windows and most L
 You can build and install this library and python module from source by using CMake and a C++ compiler. The CMake Project will be 
 built automatically, but will take some time.
 
-### Prerequisites
+#### Prerequisites
 - C++ Compiler
   - g++ or clang for Linux
   - MSVC or clang from Visual Studio 2022 for Windows
 - CMake >= 3.30
 - Python >= 3.11
 
-### CMake
+#### CMake
 In order to use the module directly from another C++ Project, you can integrate it by adding the local location of this repository via `add_submodule()` and then link against the target `libRadFiled3D`. All classes are then available from the namespace `RadFiled3D`. Check the [Example](./examples/cxx/example01.cpp) or the [First Test File](./tests/basic.cpp) as a first reference.
 
-### Python
+#### Python
 In order to use the Module from Python, we provide a setup.py file that handles the compilation and integration automatically from the python setuptools.
-#### Installing locally
+##### Installing locally
 `python -m pip install .`
 
-#### Building a wheel
+##### Building a wheel
 `python -m build --wheel`
 
 ## Getting Started
-## From C++
-
-Simple example on how to create and store a radiation field. Find more in the example file: [Example](./examples/cxx/example01.cpp)
-```c++
-#include <RadFiled3D/storage/RadiationFieldStore.hpp>
-#include <RadFiled3D/RadiationField.hpp>
-
-using namespace RadFiled3D;
-using namespace RadFiled3D::Storage;
-
-void main() {
-    auto field = std::make_shared<CartesianRadiationField>(glm::vec3(2.5f), glm::vec3(0.05f)); // field extents: 2.5 m x 2.5 m x 2.5 m and voxel extents: 5 cm x 5 cm x 5 cm
-
-    auto metadata = std::make_shared<RadFiled3D::Storage::V1::RadiationFieldMetadata>(
-        // learn about the existing data fields from the example file in ./examples/cxx/examples01.cpp
-    )
-
-    FieldStore::store(field, metadata, "test_field.rf3", StoreVersion::V1);
-
-    auto field2 = FieldStore::load("test_field.rf3");
-}
-```
-
 ## From Python
 Simple example on how to create and store a radiation field. Find more in the example file: [Example](./examples/python/example01.py)
 ```python
@@ -89,41 +66,73 @@ metadata2 = FieldStore.load_metadata("test01.rf3")
 ### Integrating with pyTorch
 RadFiled3D comes with a submodule at `RadFiled3D.pytorch`. This module provides some dataset classes to support the usage. Datasets can be loaded from folders or .zip-Files.
 ```python
-from RadFiled3D.pytorch import MetadataLoadMode, CartesianFieldSingleLayerDataset, DatasetBuilder
+from RadFiled3D.pytorch import MetadataLoadMode, CartesianFieldSingleLayerDataset, DataLoaderBuilder
 from RadFiled3D.pytorch.helpers import load_tensor_from_layer
 from RadFiled3D.RadFiled3D import VoxelGrid
 from torch import Tensor
 
 
 # Extend one of the provided dataset classes to match the output to the current needs
-# The argument type of 'field' may vary depending on the dataset type between RadiationField (Whole field), VoxelGridBuffer (Channel), VoxelGrid (Layer) and Voxel (Single Voxel)
+# The argument type of 'layer' may vary depending on the dataset type between RadiationField (Whole field), VoxelGridBuffer (Channel), VoxelGrid (Layer) and Voxel (Single Voxel)
 # The argument idx will contain the requested index from the dataset just in case someone wants to alter the return value based on it.
 class MyLayerDataset(CartesianFieldSingleLayerDataset):
-    def transform_field(self, field: VoxelGrid, idx: int) -> Tensor:
-        return load_tensor_from_layer(field)
+    def transform(self, layer: VoxelGrid, idx: int) -> Tensor:
+        return load_tensor_from_layer(layer)    # transform the layers data
 
+    def transform_origin(self, metadata: RadiationFieldMetadataV1, idx) -> Tensor:
+        direction = metadata.get_header().simulation.tube.radiation_direction   # transform selected data from the header
+        return torch.tensor([direction.x, direction.y, direction.z], dtype=torch.float32)
 
-# Pass the dataset class and other options to the DatasetBuilder
-builder = DatasetBuilder(
+def finalize_dataset(dataset: MyLayerDataset)
+    dataset.set_channel_and_layer("test_channel", "test_layer")
+    dataset.metadata_load_mode = MetadataLoadMode.HEADER
+
+# Pass the dataset class and other options to the DataLoaderBuilder
+builder = DataLoaderBuilder(
     "./test_dataset.zip",
     train_ratio=0.7,
     val_ratio=0.15,
     test_ratio=0.15,
-    dataset_class=MyLayerDataset
+    dataset_class=MyLayerDataset,
+    on_dataset_created=finalize_dataset     # Optional: provide a finalizer to perform configuration of the dataset once it was created by the builder
 )
-# Build and finalize the training dataset
-train_ds = builder.build_train_dataset()
-# define the channel and layer to load from each field and spare out all other data
-train_ds.set_channel_and_layer("test_channel", "test_layer")
-# Load the metadata header for each radiation field, but not the dynamic metadata to speed up the loading
-train_ds.metadata_load_mode = MetadataLoadMode.HEADER
+
+# Build the training dataset
+train_dl = builder.build_train_dataloader(
+    batch_size=8,
+    shuffle=True,
+    worker_count=4
+)
 
 # iterate over the dataset
-for field, metadata in train_ds:
+for field, metadata in train_dl:
     pass
 ```
 
-### Field Structure
+## From C++
+
+Simple example on how to create and store a radiation field. Find more in the example file: [Example](./examples/cxx/example01.cpp)
+```c++
+#include <RadFiled3D/storage/RadiationFieldStore.hpp>
+#include <RadFiled3D/RadiationField.hpp>
+
+using namespace RadFiled3D;
+using namespace RadFiled3D::Storage;
+
+void main() {
+    auto field = std::make_shared<CartesianRadiationField>(glm::vec3(2.5f), glm::vec3(0.05f)); // field extents: 2.5 m x 2.5 m x 2.5 m and voxel extents: 5 cm x 5 cm x 5 cm
+
+    auto metadata = std::make_shared<RadFiled3D::Storage::V1::RadiationFieldMetadata>(
+        // learn about the existing data fields from the example file in ./examples/cxx/examples01.cpp
+    )
+
+    FieldStore::store(field, metadata, "test_field.rf3", StoreVersion::V1);
+
+    auto field2 = FieldStore::load("test_field.rf3");
+}
+```
+
+## Field Structure
 RadFiled3D defines a field structure, that provides the user with the possibility to first define in which kind of space he wants to operate. Therefore one can choose between `CartesianRadiationField` and `PolarRadiationField`.
 - *CartesianRadiationField*: Segments a room defined by an extent of the room itself and each cuboid voxel into a set of voxels. Each voxel can be addressed by a 3D position (coordinate: x, y, z), a 3D index (number of the voxel in each dimension) or a flat 1D index.
 - *PolarRadiationField*: Segements the surface of a unit sphere into surface segments. Each segment (voxel) can be addressed by a 2D position (coordinate: theta, phi), a 2D index (number of the segment in each dimension) or a flat 1D index.
