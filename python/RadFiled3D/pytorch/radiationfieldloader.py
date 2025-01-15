@@ -502,7 +502,7 @@ class DataLoaderBuilder(object):
         is_multiprocessing = worker_count is None or worker_count != 0
         if worker_count is None or worker_count < 0:
             worker_count = max(1, os.cpu_count() - 1)
-        dl = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=worker_count, pin_memory=is_multiprocessing)
+        dl = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=worker_count, pin_memory=is_multiprocessing, persistent_workers=is_multiprocessing)
         dl.dataset._field_accessor = None
         return dl
 
