@@ -41,6 +41,26 @@ namespace RadFiled3D
 			return this->get_voxel_idx(x_index, y_index, z_index);
 		};
 
+		/** Access a voxels number in each dimension at the given flat index
+		* @param idx The flat voxel index
+		*  @return The number of voxels in each dimension
+		*/
+		inline glm::uvec3 get_voxel_indices(size_t idx) const {
+			size_t z = idx / (this->voxel_counts.y * this->voxel_counts.x);
+			size_t y = (idx - z * this->voxel_counts.y * this->voxel_counts.x) / this->voxel_counts.x;
+			size_t x = idx - z * this->voxel_counts.y * this->voxel_counts.x - y * this->voxel_counts.x;
+			return glm::uvec3(x, y, z);
+		};
+
+		/** Access a voxels spatial coordinates at the given flat index
+		* @param idx The flat voxel index
+		* @return The spatial coordinates of the voxel
+		*/
+		inline glm::vec3 get_voxel_coords(size_t idx) const {
+			glm::uvec3 indices = this->get_voxel_indices(idx);
+			return glm::vec3(indices) * this->voxel_dimensions;
+		};
+
 		/** Access a voxel at the given quantized coordinates within the range (0, 0, 0) to (voxel_counts.x - 1, voxel_counts.y - 1, voxel_counts.z - 1)
 		* @param x The x coordinate of the voxel
 		* @param y The y coordinate of the voxel
@@ -89,6 +109,11 @@ namespace RadFiled3D
 	protected:
 		VoxelGrid voxel_grid;
 	public:
+		/** Returns the contained voxel grid */
+		const VoxelGrid& get_grid() const {
+			return this->voxel_grid;
+		}
+
 		/** Create a new voxel grid with the given dimensions and voxel dimensions
 		* @param field_dimensions The dimensions of the field in which the voxels are placed
 		* @param voxel_dimensions The dimensions of the voxels

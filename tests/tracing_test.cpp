@@ -105,4 +105,86 @@ namespace {
 		EXPECT_EQ(result.size(), unique_result.size());
 		EXPECT_EQ(result.size(), 998);
 	}
+
+	TEST(LineTracing, TraceInside) {
+		CartesianRadiationField field(glm::vec3(1.f), glm::vec3(0.1));
+		auto buffer = field.add_channel("test");
+		LinetracingGridTracer tracer(*(VoxelGridBuffer*)buffer.get());
+		auto result = tracer.trace(glm::vec3(0.f), glm::vec3(1.f));
+		std::set<size_t> unique_result(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 42);
+
+		result = tracer.trace(glm::vec3(0.f), glm::vec3(0.f));
+		unique_result = std::set<size_t>(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 0);
+
+		result = tracer.trace(glm::vec3(0.f), glm::vec3(0.15f));
+		unique_result = std::set<size_t>(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 4);
+
+		result = tracer.trace(glm::vec3(0.05f, 0.05f, 0.05f), glm::vec3(0.195f, 0.195f, 0.195f));
+		unique_result = std::set<size_t>(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 4);
+
+		result = tracer.trace(glm::vec3(0.f, 0.05f, 0.f), glm::vec3(0.f, 0.18f, 0.f));
+		unique_result = std::set<size_t>(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 1);
+
+		result = tracer.trace(glm::vec3(0.f, 0.5f, 0.5f), glm::vec3(1.f, 0.5f, 0.5f));
+		unique_result = std::set<size_t>(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 9);
+
+		result = tracer.trace(glm::vec3(0.f, 0.5f, 0.5f), glm::vec3(0.5f, 0.5f, 0.5f));
+		unique_result = std::set<size_t>(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 5);
+	}
+
+	TEST(LineTracing, TraceOutside) {
+		CartesianRadiationField field(glm::vec3(1.f), glm::vec3(0.1));
+		auto buffer = field.add_channel("test");
+		LinetracingGridTracer tracer(*(VoxelGridBuffer*)buffer.get());
+		auto result = tracer.trace(glm::vec3(-2.f), glm::vec3(-1.f));
+		std::set<size_t> unique_result(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 0);
+		result = tracer.trace(glm::vec3(2.f), glm::vec3(3.f));
+		unique_result = std::set<size_t>(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 0);
+	}
+
+	TEST(LineTracing, TraceAnywhere) {
+		CartesianRadiationField field(glm::vec3(1.f), glm::vec3(0.1));
+		auto buffer = field.add_channel("test");
+		LinetracingGridTracer tracer(*(VoxelGridBuffer*)buffer.get());
+		auto result = tracer.trace(glm::vec3(-0.5f), glm::vec3(0.5f));
+		std::set<size_t> unique_result(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 17);
+		result = tracer.trace(glm::vec3(0.5f), glm::vec3(-0.5f));
+		unique_result = std::set<size_t>(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 17);
+		result = tracer.trace(glm::vec3(0.5f), glm::vec3(2.5f));
+		unique_result = std::set<size_t>(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 19);
+	}
+
+	TEST(LineTracing, TraceBigField) {
+		CartesianRadiationField field(glm::vec3(1.f), glm::vec3(0.001));
+		auto buffer = field.add_channel("test");
+		LinetracingGridTracer tracer(*(VoxelGridBuffer*)buffer.get());
+		auto result = tracer.trace(glm::vec3(0.f), glm::vec3(1.f));
+		std::set<size_t> unique_result(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 2870);
+	}
 }

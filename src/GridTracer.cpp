@@ -3,6 +3,7 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/component_wise.hpp> 
 #include <iostream>
+#include <set>
 
 
 using namespace RadFiled3D;
@@ -148,7 +149,70 @@ std::vector<size_t> BresenhamGridTracer::trace(const glm::vec3& p1, const glm::v
 
 std::vector<size_t> LinetracingGridTracer::trace(const glm::vec3& p1, const glm::vec3& p2)
 {
-	throw std::runtime_error("Not implemented");
+	glm::vec3 line_start = p1;
+	glm::vec3 line_end = p2;
+
+	if (this->clipLine(line_start, line_end)) {
+		bool clipped_incident = line_start != p1;
+		const size_t start_voxel_idx = this->buffer.get_grid().get_voxel_idx_by_coord(line_start.x, line_start.y, line_start.z);
+		auto voxels = this->lossyTracer.trace(line_start, line_end);
+		if (clipped_incident)
+			voxels.push_back(start_voxel_idx);
+		std::set<size_t> voxels_to_test(voxels.begin(), voxels.end());
+		for (size_t vx_idx : voxels) {
+			const glm::uvec3 vx_indices = this->buffer.get_grid().get_voxel_indices(vx_idx);
+			if (vx_indices.z + 1 < this->buffer.get_grid().get_voxel_counts().z)
+				voxels_to_test.insert(this->buffer.get_grid().get_voxel_idx(vx_indices.x, vx_indices.y, vx_indices.z + 1));
+			if (vx_indices.z > 0)
+				voxels_to_test.insert(this->buffer.get_grid().get_voxel_idx(vx_indices.x, vx_indices.y, vx_indices.z - 1));
+			if (vx_indices.y + 1 < this->buffer.get_grid().get_voxel_counts().y)
+				voxels_to_test.insert(this->buffer.get_grid().get_voxel_idx(vx_indices.x, vx_indices.y + 1, vx_indices.z));
+			if (vx_indices.y > 0)
+				voxels_to_test.insert(this->buffer.get_grid().get_voxel_idx(vx_indices.x, vx_indices.y - 1, vx_indices.z));
+			if (vx_indices.x + 1 < this->buffer.get_grid().get_voxel_counts().x)
+				voxels_to_test.insert(this->buffer.get_grid().get_voxel_idx(vx_indices.x + 1, vx_indices.y, vx_indices.z));
+			if (vx_indices.x > 0)
+				voxels_to_test.insert(this->buffer.get_grid().get_voxel_idx(vx_indices.x - 1, vx_indices.y, vx_indices.z));
+		}
+
+		// perform line tracing on each cubic voxel in the list.
+		std::vector<size_t> result;
+		//const glm::vec3 voxel_half_dimension = this->buffer.get_voxel_dimensions() / 2.f;
+		for (size_t vx_idx : voxels_to_test) {
+			if (!clipped_incident && vx_idx == start_voxel_idx)
+				continue;
+			const glm::vec3 vx_pos = this->buffer.get_grid().get_voxel_coords(vx_idx);// -voxel_half_dimension;
+			const glm::vec3 vx_pos_end = vx_pos + this->buffer.get_voxel_dimensions();
+
+			if (this->intersectsAABB(line_start, line_end, vx_pos, vx_pos_end)) {
+				result.push_back(vx_idx);
+			}
+		}
+		return result;
+	}
+	return std::vector<size_t>();
+}
+
+bool LinetracingGridTracer::intersectsAABB(const glm::vec3& line_start, const glm::vec3& line_end, const glm::vec3& vx_pos, const glm::vec3& vx_pos_end) const
+{
+	glm::vec3 box_center = (vx_pos + vx_pos_end) * 0.5f;
+	glm::vec3 box_half_size = (vx_pos_end - vx_pos) * 0.5f;
+	glm::vec3 line_dir = line_end - line_start;
+	glm::vec3 line_center = (line_start + line_end) * 0.5f;
+	glm::vec3 line_half_size = glm::abs(line_dir) * 0.5f;
+	glm::vec3 diff = line_center - box_center;
+
+	glm::vec3 abs_line_dir = glm::abs(line_dir);
+
+	if (glm::abs(diff.x) > (box_half_size.x + line_half_size.x)) return false;
+	if (glm::abs(diff.y) > (box_half_size.y + line_half_size.y)) return false;
+	if (glm::abs(diff.z) > (box_half_size.z + line_half_size.z)) return false;
+
+	if (glm::abs(diff.y * line_dir.z - diff.z * line_dir.y) > (box_half_size.y * abs_line_dir.z + box_half_size.z * abs_line_dir.y)) return false;
+	if (glm::abs(diff.z * line_dir.x - diff.x * line_dir.z) > (box_half_size.z * abs_line_dir.x + box_half_size.x * abs_line_dir.z)) return false;
+	if (glm::abs(diff.x * line_dir.y - diff.y * line_dir.x) > (box_half_size.x * abs_line_dir.y + box_half_size.y * abs_line_dir.x)) return false;
+
+	return true;
 }
 
 bool LinetracingGridTracer::clipLine(glm::vec3& start, glm::vec3& end) const
