@@ -2,13 +2,13 @@
 
 ![Tests](https://github.com/Centrasis/RadFiled3D/actions/workflows/package-test-publish.yml/badge.svg)
 
-This Repository holds the Fileformat and API according to the Paper: "RadField3D: A Data Generator and Data Format for Deep Learning in Radiation-Protection Dosimetry for Medical Applications".
+This Repository contains the file format and API according to the Paper: "RadField3D: A Data Generator and Data Format for Deep Learning in Radiation-Protection Dosimetry for Medical Applications".
 
 The aim of this library is, to provide a simple to use API for a structured, binary file format, that can store all relevant information from a three dimensional radiation field calculated by applications that use algorithms like Monte-Carlo radiation transport simulations. Such a binary file format is useful, when one needs to process a huge amount of radiation field files like when training a neural network. With that use-case in mind, RadFiled3D also provides a python interface with a pyTorch integration.
 
 ## Building and Installing
 ### Installing from PyPi
-Prebuilt versions of this module for python 3.11 and 3.12 for Windows and most Linuxsystems can be installed directly by using pip.
+Prebuilt versions of this module for python 3.11, 3.12 and 3.13 for Windows and most Linuxsystems can be installed directly by using pip.
 
 ``pip install RadFiled3D``
 
