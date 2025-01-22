@@ -156,8 +156,10 @@ std::vector<size_t> LinetracingGridTracer::trace(const glm::vec3& p1, const glm:
 		bool clipped_incident = line_start != p1;
 		const size_t start_voxel_idx = this->buffer.get_grid().get_voxel_idx_by_coord(line_start.x, line_start.y, line_start.z);
 		auto voxels = this->lossyTracer.trace(line_start, line_end);
-		if (clipped_incident)
-			voxels.push_back(start_voxel_idx);
+		if (clipped_incident) {
+			if (this->buffer.get_voxel_count() > start_voxel_idx)
+				voxels.push_back(start_voxel_idx);
+		}
 		std::set<size_t> voxels_to_test(voxels.begin(), voxels.end());
 		for (size_t vx_idx : voxels) {
 			const glm::uvec3 vx_indices = this->buffer.get_grid().get_voxel_indices(vx_idx);
