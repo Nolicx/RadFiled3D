@@ -1089,6 +1089,9 @@ PYBIND11_MODULE(RadFiled3D, m) {
                 case Typing::DType::UInt64:
                     self.add_layer<uint64_t>(name, 0, unit);
 					break;
+				case Typing::DType::UInt32:
+					self.add_layer<unsigned long>(name, 0, unit);
+					break;
                 default:
                     throw std::runtime_error("Unsupported voxel type: " + std::to_string(static_cast<int>(dtype)));
             }

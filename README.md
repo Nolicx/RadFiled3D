@@ -109,6 +109,37 @@ for field, metadata in train_dl:
     pass
 ```
 
+### Tracing paths in Cartesian Coordinate Systems
+In order to integrate RadFiled3D with other simulation frameworks or applications, one can either take the final results and write it voxel-wise to RadFiled3D or one can already use RadFiled3D during the particle tracking. Therefore, this library offers `GridTracers`. Each of them implements a different line-segment tracing algorithm to find consecutive voxels that are intersected.
+
+The following `GridTracers` exists:
+- `SamplingGridTracer`: Traces a line between two points in the grid using a sampling approach.	In this approach the minimum sampling size is the length of the line segment. If the line segment is longer than the minimum sampling size, which is half the L2-Norm of the voxel size, the line is divided into segments of the minimum sampling size. This approach counts the hits if the line segment is incident to a voxel, only!
+- `BresenhamGridTracer`: Traces a line between two points in the grid using the [Bresenham](https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm) algorithm. This algorithm is a line rasterization algorithm that is used to trace a line between two points in a grid. The starting point is excluded as this can only exit a voxel.
+- `LinetracingGridTracer`: This class traces a line between two points in the grid using a combination of the `SamplingGridTracer` and a line tracing algorithm. First the lossy sampling tracer is used to trace the line. Then all adjacent voxels to the voxels that were hit are tested using a line-segment intersection test algorithm.
+
+All those tracers can be created by calling the `GridTracerFactory.construct(..)` method. The tracers share one single interface method:
+```python
+def trace(self, p1: vec3, p2: vec3) -> list[int]:
+```
+This method takes two points as the definition of the considered line-segment and returns the flat indices of all voxels intersected, that are inside the grid.
+
+[Example](./examples/python/example02.py) usage:
+```python
+from RadFiled3D.RadFiled3D import vec3, GridTracerFactory, GridTracerAlgorithm, CartesianRadiationField, DType
+
+field = CartesianRadiationField(vec3(1.0, 1.0, 1.0), vec3(0.01, 0.01, 0.01))
+field.add_channel("test").add_layer("hits", "counts", DType.INT32)
+hits_counts = field.get_channel("test").get_layer_as_ndarray("hits")
+hits_counts = hits_counts.flatten()
+
+tracer = GridTracerFactory.construct(field, GridTracerAlgorithm.SAMPLING)
+
+indices = tracer.trace(vec3(0.5, 0.5, 0.0), vec3(0.5, 0.85, 1.0))
+hits_counts[indices] += 1
+grid_shape = field.get_voxel_counts()
+hits_counts.reshape((grid_shape.x, grid_shape.y, grid_shape.z))
+```
+
 ## From C++
 
 Simple example on how to create and store a radiation field. Find more in the example file: [Example](./examples/cxx/example01.cpp)

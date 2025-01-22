@@ -49,7 +49,7 @@ namespace RadFiled3D {
 	};
 
 	/** This class traces a line between two points in the grid using a combination of the sampling tracer and a line tracing algorithm.
-		First the lossy sampling tracer is used to trace the line. Then all adjacent voxels to the voxels that were hit are tested using the line tracing algorithm.
+		First the lossy sampling tracer is used to trace the line. Then all adjacent voxels to the voxels that were hit are tested using a line-segment intersection test algorithm.
 		*/
 	class LinetracingGridTracer : public GridTracer {
 	protected:

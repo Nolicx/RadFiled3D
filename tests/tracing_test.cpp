@@ -92,6 +92,12 @@ namespace {
 		unique_result = std::set<size_t>(result.begin(), result.end());
 		EXPECT_EQ(result.size(), unique_result.size());
 		EXPECT_EQ(result.size(), 4);
+
+		size_t max_idx = 0.f;
+		for (size_t idx : result)
+			if (idx > max_idx)
+				max_idx = idx;
+		EXPECT_EQ(max_idx, field.get_voxel_counts().x * field.get_voxel_counts().y * field.get_voxel_counts().z - 1);
 	}
 
 	TEST(Bresenham, TraceBigField) {
@@ -164,24 +170,34 @@ namespace {
 		CartesianRadiationField field(glm::vec3(1.f), glm::vec3(0.1));
 		auto buffer = field.add_channel("test");
 		LinetracingGridTracer tracer(*(VoxelGridBuffer*)buffer.get());
+
 		auto result = tracer.trace(glm::vec3(-0.5f), glm::vec3(0.5f));
 		std::set<size_t> unique_result(result.begin(), result.end());
 		EXPECT_EQ(result.size(), unique_result.size());
 		EXPECT_EQ(result.size(), 17);
+
 		result = tracer.trace(glm::vec3(0.5f), glm::vec3(-0.5f));
 		unique_result = std::set<size_t>(result.begin(), result.end());
 		EXPECT_EQ(result.size(), unique_result.size());
 		EXPECT_EQ(result.size(), 17);
+
 		result = tracer.trace(glm::vec3(0.5f), glm::vec3(2.5f));
 		unique_result = std::set<size_t>(result.begin(), result.end());
 		EXPECT_EQ(result.size(), unique_result.size());
 		EXPECT_EQ(result.size(), 19);
+
+		size_t max_idx = 0.f;
+		for (size_t idx : result)
+			if (idx > max_idx)
+				max_idx = idx;
+		EXPECT_EQ(max_idx, field.get_voxel_counts().x * field.get_voxel_counts().y * field.get_voxel_counts().z - 1);
 	}
 
 	TEST(LineTracing, TraceBigField) {
 		CartesianRadiationField field(glm::vec3(1.f), glm::vec3(0.001));
 		auto buffer = field.add_channel("test");
 		LinetracingGridTracer tracer(*(VoxelGridBuffer*)buffer.get());
+
 		auto result = tracer.trace(glm::vec3(0.f), glm::vec3(1.f));
 		std::set<size_t> unique_result(result.begin(), result.end());
 		EXPECT_EQ(result.size(), unique_result.size());
