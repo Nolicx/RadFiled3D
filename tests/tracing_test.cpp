@@ -14,6 +14,104 @@
 using namespace RadFiled3D;
 
 namespace {
+	TEST(Sampling, TraceInside) {
+		CartesianRadiationField field(glm::vec3(1.f), glm::vec3(0.1));
+		auto buffer = field.add_channel("test");
+
+		SamplingGridTracer tracer(*(VoxelGridBuffer*)buffer.get());
+
+		auto result = tracer.trace(glm::vec3(0.f), glm::vec3(1.f));
+		std::set<size_t> unique_result(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 9);
+
+		for (int i = 0; i < 9; i++)
+			EXPECT_EQ(result[i], ((VoxelGridBuffer*)buffer.get())->get_voxel_idx_by_coord(0.1f * (i + 1), 0.1f * (i + 1), 0.1f * (i + 1)));
+
+
+		result = tracer.trace(glm::vec3(0.f), glm::vec3(0.f));
+		unique_result = std::set<size_t>(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 0);
+
+		result = tracer.trace(glm::vec3(0.f), glm::vec3(0.15f));
+		unique_result = std::set<size_t>(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 1);
+
+		result = tracer.trace(glm::vec3(0.f), glm::vec3(0.22f));
+		unique_result = std::set<size_t>(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 2);
+
+		result = tracer.trace(glm::vec3(0.f, 0.5f, 0.5f), glm::vec3(1.f, 0.5f, 0.5f));
+		unique_result = std::set<size_t>(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 9);
+
+		result = tracer.trace(glm::vec3(0.f, 0.5f, 0.5f), glm::vec3(0.5f, 0.5f, 0.5f));
+		unique_result = std::set<size_t>(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 5);
+	}
+
+	TEST(Sampling, TraceOutside) {
+		CartesianRadiationField field(glm::vec3(1.f), glm::vec3(0.1));
+		auto buffer = field.add_channel("test");
+
+		SamplingGridTracer tracer(*(VoxelGridBuffer*)buffer.get());
+
+		auto result = tracer.trace(glm::vec3(-2.f), glm::vec3(-1.f));
+		std::set<size_t> unique_result(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 0);
+
+		result = tracer.trace(glm::vec3(2.f), glm::vec3(3.f));
+		unique_result = std::set<size_t>(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 0);
+	}
+
+	TEST(Sampling, TraceAnywhere) {
+		CartesianRadiationField field(glm::vec3(1.f), glm::vec3(0.1));
+		auto buffer = field.add_channel("test");
+
+		SamplingGridTracer tracer(*(VoxelGridBuffer*)buffer.get());
+
+		auto result = tracer.trace(glm::vec3(-0.5f), glm::vec3(0.5f));
+		std::set<size_t> unique_result(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 5);
+
+		result = tracer.trace(glm::vec3(0.5f), glm::vec3(-0.5f));
+		unique_result = std::set<size_t>(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 5);
+
+		result = tracer.trace(glm::vec3(0.5f), glm::vec3(2.5f));
+		unique_result = std::set<size_t>(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 4);
+
+		size_t max_idx = 0.f;
+		for (size_t idx : result)
+			if (idx > max_idx)
+				max_idx = idx;
+		EXPECT_EQ(max_idx, field.get_voxel_counts().x * field.get_voxel_counts().y * field.get_voxel_counts().z - 1);
+	}
+
+	TEST(Sampling, TraceBigField) {
+		CartesianRadiationField field(glm::vec3(1.f), glm::vec3(0.001));
+		auto buffer = field.add_channel("test");
+
+		SamplingGridTracer tracer(*(VoxelGridBuffer*)buffer.get());
+
+		auto result = tracer.trace(glm::vec3(0.f), glm::vec3(1.f));
+		std::set<size_t> unique_result(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+		EXPECT_EQ(result.size(), 998);
+	}
+
 	TEST(Bresenham, TraceInside) {
 		CartesianRadiationField field(glm::vec3(1.f), glm::vec3(0.1));
 		auto buffer = field.add_channel("test");
