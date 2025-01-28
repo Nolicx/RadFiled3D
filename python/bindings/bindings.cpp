@@ -969,6 +969,16 @@ PYBIND11_MODULE(RadFiled3D, m) {
                 cap
             );
         }, py::return_value_policy::reference)
+        .def("get_data", [](const HistogramVoxel& a) {
+            auto histogram = a.get_histogram();
+            py::capsule cap(histogram.data(), [](void* data) { /* No deletion */ });
+            return py::array_t<float>(
+                { static_cast<size_t>(histogram.size()) },  // shape
+                { sizeof(float) },  // strides
+                histogram.data(),
+                cap
+            );
+        }, py::return_value_policy::reference)
         .def("add_value", &HistogramVoxel::add_value)
         .def("normalize", &HistogramVoxel::normalize)
         .def(py::self == py::self)

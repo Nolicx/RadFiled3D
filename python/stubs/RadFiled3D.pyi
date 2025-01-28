@@ -263,13 +263,15 @@ class HistogramVoxel(Voxel):
 
         :return: The histogram data of the voxel.
         """
+        ...
 
     def get_data(self) -> np.ndarray:
         """
         Returns the histogram data of the voxel.
-        :see get_histogram
+
+        :return: The histogram data of the voxel.
         """
-        return self.get_histogram()
+        ...
 
     def __eq__(self, value: "HistogramVoxel") -> bool: ...
 
