@@ -12,6 +12,7 @@ using namespace RadFiled3D;
 std::vector<size_t> SamplingGridTracer::trace(const glm::vec3& p1, const glm::vec3& p2)
 {
 	std::vector<size_t> voxels;
+	const size_t max_idx = this->buffer.get_voxel_count() - 1;
 
 	const glm::vec3 track_direction = glm::normalize(p2 - p1);
 	const float track_length = glm::length(p2 - p1);
@@ -33,7 +34,7 @@ std::vector<size_t> SamplingGridTracer::trace(const glm::vec3& p1, const glm::ve
 		size_t v1_idx = (is_pre_step_outside) ? 0 : this->buffer.get_voxel_idx_by_coord(pre_step_pos.x, pre_step_pos.y, pre_step_pos.z);
 		size_t v2_idx = this->buffer.get_voxel_idx_by_coord(post_step_pos.x, post_step_pos.y, post_step_pos.z);
 
-		if (v1_idx == v2_idx && !is_pre_step_outside)
+		if ((v1_idx == v2_idx && !is_pre_step_outside) || v2_idx > max_idx)
 			continue;
 
 		voxels.push_back(v2_idx);

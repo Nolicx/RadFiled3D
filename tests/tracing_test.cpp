@@ -92,12 +92,28 @@ namespace {
 		unique_result = std::set<size_t>(result.begin(), result.end());
 		EXPECT_EQ(result.size(), unique_result.size());
 		EXPECT_EQ(result.size(), 4);
-
 		size_t max_idx = 0.f;
 		for (size_t idx : result)
 			if (idx > max_idx)
 				max_idx = idx;
 		EXPECT_EQ(max_idx, field.get_voxel_counts().x * field.get_voxel_counts().y * field.get_voxel_counts().z - 1);
+	}
+
+	TEST(Sampling, TraceEdgeCase) {
+		CartesianRadiationField field(glm::vec3(1.f), glm::vec3(0.02f));
+		auto buffer = field.add_channel("test");
+		auto half_dim = (field.get_field_dimensions() / 2.f) * 1000.f;
+		SamplingGridTracer tracer(*(VoxelGridBuffer*)buffer.get());
+
+		auto result = tracer.trace((glm::vec3(4.20631f, 126.352f, 71.0123f) + half_dim) / 1000.f, (glm::vec3(-244.532f, -111.553f, 500.f) + half_dim) / 1000.f);
+		auto unique_result = std::set<size_t>(result.begin(), result.end());
+		EXPECT_EQ(result.size(), unique_result.size());
+
+		size_t max_idx = 0.f;
+		for (size_t idx : result)
+			if (idx > max_idx)
+				max_idx = idx;
+		EXPECT_LE(max_idx, field.get_voxel_counts().x * field.get_voxel_counts().y * field.get_voxel_counts().z - 1);
 	}
 
 	TEST(Sampling, TraceBigField) {
