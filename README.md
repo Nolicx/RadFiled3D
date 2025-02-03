@@ -140,6 +140,23 @@ grid_shape = field.get_voxel_counts()
 hits_counts.reshape((grid_shape.x, grid_shape.y, grid_shape.z))
 ```
 
+### Faster loading of field series
+As the *RadFiled3D* format possesses a dynamic structure, the loading of a radiation field requires the discovery of channels and layers as well as calculating the binary entry points of channels, layers and voxels. When loading datasets for machine learning, the structure of the fields loaded will likely be constant for each dataset. Therefore, the binary entry points can be precalculated to access only those parts of the *RadFiled3D* files that are really needed to increase the loading speed and to reduce the needed memory. This is relealized by the **FieldAccessors** objects.
+```python
+from RadFiled3D.RadFiled3D import CartesianFieldAccessor, FieldStore, FieldType, uvec3
+
+accessor: CartesianFieldAccessor = FieldStore.construct_field_accessor("a_file.rf3")
+field_type = accessor.get_field_type()
+assert field_type == FieldType.CARTESIAN
+
+print(accessor)
+field = accessor.access_field("a_similar_file.rf3")
+layer = accessor.access_layer("a_similar_file.rf3", "channel1", "layer1")
+voxel = accessor.access_voxel("a_similar_file.rf3", "channel1", "layer1", uvec3(0, 0, 0))
+```
+**FieldAccessors** are implemented for the two currently supported coordinate systems: CartesianFieldAccessor and PolarFieldAccessor. Depending on the actual field type, ``FieldStore.construct_field_accessor(AFile)`` returns one of them. The pyTorch Datasets are implemented using the **FieldAccessor** objects to allow for quicker access of datasets. The tests shall act as example code see [test_field_accessor.py](tests/test_field_accessor.py).
+
+
 ## From C++
 
 Simple example on how to create and store a radiation field. Find more in the example file: [Example](./examples/cxx/example01.cpp)
@@ -168,12 +185,12 @@ RadFiled3D defines a field structure, that provides the user with the possibilit
 - *CartesianRadiationField*: Segments a room defined by an extent of the room itself and each cuboid voxel into a set of voxels. Each voxel can be addressed by a 3D position (coordinate: x, y, z), a 3D index (number of the voxel in each dimension) or a flat 1D index.
 - *PolarRadiationField*: Segements the surface of a unit sphere into surface segments. Each segment (voxel) can be addressed by a 2D position (coordinate: theta, phi), a 2D index (number of the segment in each dimension) or a flat 1D index.
 
-Fields are then partitioned into channels (`VoxelGridBuffer`/`PolarSegmentsBuffer`). All channels share the same size and resolution. A channel is again partitioned into layers (`VoxelGrid`/`PolarSegment`). Each layer holds the actual voxel data and can be constructed from various data types (int, float, double, uint32_t, uint64_t, glm::vec2, glm::vec3, glm::vec4, N-D-Histogram). Additionally, a layer has a unit string assigned to it as well as a statistical uncertainty to perserve those information.
+Fields are then partitioned into channels (`VoxelGridBuffer`/`PolarSegmentsBuffer`). All channels share the same size and resolution. A channel is again partitioned into layers (`VoxelGrid`/`PolarSegment`). Each layer holds the actual voxel data and can be constructed from various data types (float, double, uint32_t, uint64_t, glm::vec2, glm::vec3, glm::vec4, N-D-Histogram (list of floats)). Additionally, a layer has a unit string assigned to it as well as a statistical uncertainty to perserve those information.
 
 ## Dependencies
 RadFiled3D comes with a possibly low amount of dependencies. We integrated the OpenGL Math Library (GLM) just to provide those datatypes out of the box and as GLM is a head-only library we suspect no issues by doing so.
 
-All C++ dependencies:
+All C++ dependencies (Will be fetched by CMake):
 - [GLM](https://github.com/g-truc/glm)
 
 All python dependencies:
