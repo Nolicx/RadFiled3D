@@ -34,6 +34,67 @@ namespace {
 		}
 	};
 
+	TEST(Field, CreationAndDestruction) {
+		unsigned long long field_memory_consuption = 0;
+		{
+			std::shared_ptr<CartesianRadiationField> field = std::make_shared<CartesianRadiationField>(glm::vec3(2.5f), glm::vec3(0.02f));
+			auto channel = field->add_channel("test_channel");
+			channel->add_layer<glm::vec3>("dirs", glm::vec3(0.f), "normalized direction");
+			channel->add_layer<float>("doserate", 25.3f, "Gy/s");
+			channel->add_custom_layer<HistogramVoxel>("spectra", HistogramVoxel(26, 10.f, nullptr), .123f, "");
+			if (field_memory_consuption == 0) {
+				field_memory_consuption += sizeof(CartesianRadiationField);
+				field_memory_consuption += sizeof(VoxelGridBuffer) * 3;
+				field_memory_consuption += field->get_voxel_counts().x * field->get_voxel_counts().y * field->get_voxel_counts().z * sizeof(ScalarVoxel<float>);
+				field_memory_consuption += field->get_voxel_counts().x * field->get_voxel_counts().y * field->get_voxel_counts().z * sizeof(ScalarVoxel<glm::vec3>);
+				field_memory_consuption += field->get_voxel_counts().x * field->get_voxel_counts().y * field->get_voxel_counts().z * sizeof(float) * 26;
+			}
+			field_memory_consuption *= 1000;
+		}
+
+		unsigned long long totalVirtualUsed_begining = 0;
+#ifdef _WIN32
+		PROCESS_MEMORY_COUNTERS_EX pmc;
+		GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(pmc));
+		totalVirtualUsed_begining = static_cast<unsigned long long>(pmc.PrivateUsage);
+#else
+		struct sysinfo memInfo;
+		sysinfo(&memInfo);
+
+		totalVirtualUsed_begining = static_cast<unsigned long long>(memInfo.totalram - memInfo.freeram);
+		totalVirtualUsed_begining += static_cast<unsigned long long>(memInfo.totalswap - memInfo.freeswap);
+		totalVirtualUsed_begining *= static_cast<unsigned long long>(memInfo.mem_unit);
+#endif
+
+		for (size_t i = 0; i < 500; i++) {
+			auto field = std::make_shared<CartesianRadiationField>(glm::vec3(2.5f), glm::vec3(0.02f));
+			auto channel = field->add_channel("test_channel");
+			channel->add_layer<glm::vec3>("dirs", glm::vec3(0.f), "normalized direction");
+			channel->add_layer<float>("doserate", 25.3f, "Gy/s");
+			channel->add_custom_layer<HistogramVoxel>("spectra", HistogramVoxel(26, 10.f, nullptr), .123f, "");
+		}
+
+		unsigned long long totalVirtualUsed_end = 0;
+#ifdef _WIN32
+		GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(pmc));
+		totalVirtualUsed_end = static_cast<unsigned long long>(pmc.PrivateUsage);
+#else
+		sysinfo(&memInfo);
+
+		totalVirtualUsed_end = static_cast<unsigned long long>(memInfo.totalram - memInfo.freeram);
+		totalVirtualUsed_end += static_cast<unsigned long long>(memInfo.totalswap - memInfo.freeswap);
+		totalVirtualUsed_end *= static_cast<unsigned long long>(memInfo.mem_unit);
+#endif
+
+		std::cout << "Memory used in the begining: " << totalVirtualUsed_begining << std::endl;
+		std::cout << "Memory used in the end: " << totalVirtualUsed_end << std::endl;
+		unsigned long long memoryUsed = (totalVirtualUsed_end > totalVirtualUsed_begining) ? totalVirtualUsed_end - totalVirtualUsed_begining : 0;
+
+		std::cout << "Memory used per field: " << memoryUsed / 1000 << std::endl;
+
+		EXPECT_TRUE(memoryUsed / 1000 < field_memory_consuption + 1);
+	}
+
 
 	TEST(Storage, FileLoading) {
 		std::shared_ptr<CartesianRadiationField> field = std::make_shared<CartesianRadiationField>(glm::vec3(2.5f), glm::vec3(0.05f));
