@@ -1842,7 +1842,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
             .def_static("get_store_version", static_cast<Storage::StoreVersion(*)(const std::string&)>(&Storage::FieldStore::get_store_version))
             .def_static("load", static_cast<std::shared_ptr<IRadiationField>(*)(const std::string&)>(&FieldStore::load))
             .def_static("load_from_buffer", [](const std::string& bytes) {
-            std::istringstream stream(bytes);
+                std::istringstream stream(bytes);
                 return FieldStore::load(stream);
             })
             .def_static("load_metadata", static_cast<std::shared_ptr<Storage::RadiationFieldMetadata>(*)(const std::string&)>(&FieldStore::load_metadata))
@@ -1868,7 +1868,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
             })
             .def_static("load_single_grid_layer", [](const std::string& file, const std::string& channel_name, const std::string& layer_name) -> std::shared_ptr<VoxelGrid> {
 			    std::ifstream buffer(file, std::ios::binary);
-                auto accessor = RadFiled3D::Storage::FieldAccessorBuilder::Construct(buffer);
+                auto accessor = FieldStore::construct_accessor(buffer);
 
 				if (accessor->getFieldType() != RadFiled3D::FieldType::Cartesian) {
 					throw std::runtime_error("Field is not of type Cartesian");
@@ -1878,7 +1878,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
             })
 			.def_static("load_single_grid_layer_from_buffer", [](const std::string& bytes, const std::string& channel_name, const std::string& layer_name) -> std::shared_ptr<VoxelGrid> {
 			    std::istringstream stream(bytes);
-				auto accessor = RadFiled3D::Storage::FieldAccessorBuilder::Construct(stream);
+				auto accessor = FieldStore::construct_accessor(stream);
 
 				if (accessor->getFieldType() != RadFiled3D::FieldType::Cartesian) {
 					throw std::runtime_error("Field is not of type Cartesian");
@@ -1888,7 +1888,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
 		    })
             .def_static("load_single_polar_layer", [](const std::string& file, const std::string& channel_name, const std::string& layer_name) -> std::shared_ptr<PolarSegments> {
 			    std::ifstream buffer(file, std::ios::binary);
-			    auto accessor = RadFiled3D::Storage::FieldAccessorBuilder::Construct(buffer);
+			    auto accessor = FieldStore::construct_accessor(buffer);
 
 				if (accessor->getFieldType() != RadFiled3D::FieldType::Polar) {
 					throw std::runtime_error("Field is not of type Polar");
@@ -1898,7 +1898,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
             })
             .def_static("load_single_polar_layer_from_buffer", [](const std::string& bytes, const std::string& channel_name, const std::string& layer_name) -> std::shared_ptr<PolarSegments> {
 			    std::istringstream stream(bytes);
-			    auto accessor = RadFiled3D::Storage::FieldAccessorBuilder::Construct(stream);
+			    auto accessor = FieldStore::construct_accessor(stream);
 
 				if (accessor->getFieldType() != RadFiled3D::FieldType::Polar) {
 					throw std::runtime_error("Field is not of type Polar");
