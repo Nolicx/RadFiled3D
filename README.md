@@ -35,10 +35,14 @@ In order to use the Module from Python, we provide a setup.py file that handles 
 `python -m build --wheel`
 
 ## Getting Started
+Disclaimer: Not all methods support keyword arguments as they need to be defined manually in the bindings. For some methods like `add_layer` or the Metadata methods those are implemented.
+
 ## From Python
 Simple example on how to create and store a radiation field. Find more in the example file: [Example](./examples/python/example01.py)
 ```python
 from RadFiled3D.RadFiled3D import CartesianRadiationField, FieldStore, StoreVersion, DType
+from RadFiled3D.metadata.v1 import Metadata
+
 
 # Creating a cartesian radiation field
 field = CartesianRadiationField(vec3(2.5, 2.5, 2.5), vec3(0.05, 0.05, 0.05))
@@ -55,7 +59,7 @@ array[2:5, 2:5, 2:5] = 2.0
 voxel = field.get_channel("channel1").get_voxel_by_coord("layer1", 0.1, 2.4, 5)
 
 # Store changes to a file
-metadata = RadiationFieldMetadataV1(...)
+metadata = Metadata.default()
 FieldStore.store(field, metadata, "test01.rf3", StoreVersion.V1)
 
 # load data

@@ -633,7 +633,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
             });
 
     py::class_<FiledTypes::V1::RadiationFieldMetadataHeader::Simulation::XRayTube>(m, "RadiationFieldXRayTubeMetadataV1")
-		.def(py::init<const glm::vec3&, const glm::vec3&, float, const std::string&>())
+		.def(py::init<const glm::vec3&, const glm::vec3&, float, const std::string&>(), py::arg("radiation_direction"), py::arg("radiation_origin"), py::arg("max_energy_eV"), py::arg("tube_id"))
 		.def_readwrite("radiation_direction", &FiledTypes::V1::RadiationFieldMetadataHeader::Simulation::XRayTube::radiation_direction)
 		.def_readwrite("radiation_origin", &FiledTypes::V1::RadiationFieldMetadataHeader::Simulation::XRayTube::radiation_origin)
 		.def_readwrite("max_energy_eV", &FiledTypes::V1::RadiationFieldMetadataHeader::Simulation::XRayTube::max_energy_eV)
@@ -647,7 +647,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
         );
 
     py::class_<FiledTypes::V1::RadiationFieldMetadataHeader::Simulation>(m, "RadiationFieldSimulationMetadataV1")
-        .def(py::init<size_t, const std::string&, const std::string&, const FiledTypes::V1::RadiationFieldMetadataHeader::Simulation::XRayTube&>())
+        .def(py::init<size_t, const std::string&, const std::string&, const FiledTypes::V1::RadiationFieldMetadataHeader::Simulation::XRayTube&>(), py::arg("primary_particle_count"), py::arg("geometry"), py::arg("physics_list"), py::arg("tube"))
 		.def_readwrite("primary_particle_count", &FiledTypes::V1::RadiationFieldMetadataHeader::Simulation::primary_particle_count)
         .def_property("geometry",
             [](FiledTypes::V1::RadiationFieldMetadataHeader::Simulation& self) -> std::string {
@@ -767,7 +767,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
         );
 
     py::class_<FiledTypes::V1::RadiationFieldMetadataHeader>(m, "RadiationFieldMetadataHeaderV1")
-		.def(py::init<FiledTypes::V1::RadiationFieldMetadataHeader::Simulation, FiledTypes::V1::RadiationFieldMetadataHeader::Software>())
+		.def(py::init<FiledTypes::V1::RadiationFieldMetadataHeader::Simulation, FiledTypes::V1::RadiationFieldMetadataHeader::Software>(), py::arg("simulation"), py::arg("software"))
 		.def_readwrite("simulation", &FiledTypes::V1::RadiationFieldMetadataHeader::simulation)
         .def_readwrite("software", &FiledTypes::V1::RadiationFieldMetadataHeader::software)
         .def(py::pickle([](FiledTypes::V1::RadiationFieldMetadataHeader& header) {
@@ -833,7 +833,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
     py::class_<Storage::RadiationFieldMetadata, std::shared_ptr<Storage::RadiationFieldMetadata>>(m, "RadiationFieldMetadata");
 
     py::class_<Storage::V1::RadiationFieldMetadata, std::shared_ptr<Storage::V1::RadiationFieldMetadata>, Storage::RadiationFieldMetadata>(m, "RadiationFieldMetadataV1")
-        .def(py::init<Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Simulation, Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Software>())
+        .def(py::init<Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Simulation, Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Software>(), py::arg("simulation"), py::arg("software"))
         .def("get_header", &Storage::V1::RadiationFieldMetadata::get_header)
         .def("set_header", &Storage::V1::RadiationFieldMetadata::set_header)
         .def("get_dynamic_metadata", [](Storage::V1::RadiationFieldMetadata& self, const std::string& key) {
@@ -1105,10 +1105,10 @@ PYBIND11_MODULE(RadFiled3D, m) {
                 default:
                     throw std::runtime_error("Unsupported voxel type: " + std::to_string(static_cast<int>(dtype)));
             }
-            })
+            }, py::arg("name"), py::arg("unit"), py::arg("dtype"))
             .def("add_histogram_layer", [](VoxelBuffer& self, const std::string& name, size_t bins, float bin_width, const std::string& unit) {
                 self.add_custom_layer<HistogramVoxel>(name, HistogramVoxel(bins, bin_width, nullptr), 0.f, unit);
-            });
+            }, py::arg("name"), py::arg("bins"), py::arg("bin_width"), py::arg("unit"));
 
         py::class_<VoxelGridBuffer, std::shared_ptr<VoxelGridBuffer>, VoxelBuffer>(m, "VoxelGridBuffer")
             .def("get_voxel_counts", &VoxelGridBuffer::get_voxel_counts)
