@@ -1,6 +1,5 @@
 from RadFiled3D.RadFiled3D import CartesianRadiationField, FieldStore, vec3, DType, StoreVersion
-from RadFiled3D.RadFiled3D import RadiationFieldMetadataV1, RadiationFieldSimulationMetadataV1, RadiationFieldXRayTubeMetadataV1, RadiationFieldSoftwareMetadataV1
-
+from RadFiled3D.metadata.v1 import Metadata
 
 ## See the C++ example for more details on the API usage
 ## Also the C++ docstrings are more detailed
@@ -59,19 +58,19 @@ if __name__ == "__main__":
     print(f"Unset data: {voxel.get_data()}")
 
     # Create the metadata object for this field
-    metadata = RadiationFieldMetadataV1(
-        RadiationFieldSimulationMetadataV1(
+    metadata = Metadata(
+        Metadata.Header.Simulation(
             100,                            # Primary particles
             "SomeGeometry",                 # Geometry
             "PhysList",                     # Used physics list
-            RadiationFieldXRayTubeMetadataV1( # X-Ray tube metadata
+            Metadata.Header.XRayTube(       # X-Ray tube metadata
                 vec3(0.0, 0.0, 0.0),
                 vec3(0.0, 0.0, 0.0),
                 0.0,
                 "SomeTubeID"
             )
         ),
-        RadiationFieldSoftwareMetadataV1(    # Software metadata
+        Metadata.Header.Software(           # Software metadata
             "SomeSoftware",
             "SomeVersion",
             "SomeRepository",
@@ -91,4 +90,4 @@ if __name__ == "__main__":
 
     # Load the metadata only
     # Note, that the file version is automatically detected
-    metadata2 = FieldStore.get_metadata("example01.rf3")
+    metadata2 = FieldStore.load_metadata("example01.rf3")

@@ -1,14 +1,15 @@
-from RadFiled3D.RadFiled3D import FieldStore, RadiationFieldMetadataV1, HistogramVoxel
+from RadFiled3D.RadFiled3D import FieldStore, HistogramVoxel
 from plotly import graph_objects as go
 import numpy
 import sys
+from RadFiled3D.metadata.v1 import Metadata
 
 
 # This file demonstrates how to load a radiation field files metadata and which information can be extracted from it.
 
 radiation_file = sys.argv[1]
 
-metadata: RadiationFieldMetadataV1 = FieldStore.load_metadata(radiation_file)
+metadata: Metadata = FieldStore.load_metadata(radiation_file)
 energy_eV = metadata.get_header().simulation.tube.max_energy_eV
 print(f"Energy: {energy_eV / 1e3} keV")
 direction = metadata.get_header().simulation.tube.radiation_direction
