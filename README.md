@@ -74,6 +74,7 @@ from RadFiled3D.pytorch import MetadataLoadMode, CartesianFieldSingleLayerDatase
 from RadFiled3D.pytorch.helpers import load_tensor_from_layer
 from RadFiled3D.RadFiled3D import VoxelGrid
 from torch import Tensor
+from RadFiled3D.metadata.v1 import Metadata
 
 
 # Extend one of the provided dataset classes to match the output to the current needs
@@ -83,7 +84,7 @@ class MyLayerDataset(CartesianFieldSingleLayerDataset):
     def transform(self, layer: VoxelGrid, idx: int) -> Tensor:
         return load_tensor_from_layer(layer)    # transform the layers data
 
-    def transform_origin(self, metadata: RadiationFieldMetadataV1, idx) -> Tensor:
+    def transform_origin(self, metadata: Metadata, idx) -> Tensor:
         direction = metadata.get_header().simulation.tube.radiation_direction   # transform selected data from the header
         return torch.tensor([direction.x, direction.y, direction.z], dtype=torch.float32)
 
