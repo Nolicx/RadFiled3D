@@ -6,6 +6,24 @@ This Repository contains the file format and API according to the Paper: "RadFie
 
 The aim of this library is, to provide a simple to use API for a structured, binary file format, that can store all relevant information from a three dimensional radiation field calculated by applications that use algorithms like Monte-Carlo radiation transport simulations. Such a binary file format is useful, when one needs to process a huge amount of radiation field files like when training a neural network. With that use-case in mind, RadFiled3D also provides a python interface with a pyTorch integration.
 
+## 🌟 Why Use RadFiled3D
+- **Efficient Storage**: Structured, binary file format for storing large amounts of radiation field data.
+- **Easy Integration**: Simple API for C++ and Python with pyTorch support.
+- **High Performance**: Optimized for fast data access and manipulation.
+- **Versatile**: Supports both Cartesian and Polar coordinate systems.
+- **Extensible**: Easily extendable to include additional metadata and data types.
+
+## Table of Contents
+- [Building and Installing](#building-and-installing)
+- [Getting Started](#getting-started)
+  - [From Python](#from-python)
+  - [Integrating with pyTorch](#integrating-with-pytorch)
+  - [Tracing paths in Cartesian Coordinate Systems](#tracing-paths-in-cartesian-coordinate-systems)
+  - [Faster loading of field series](#faster-loading-of-field-series)
+  - [From C++](#from-c)
+- [Field Structure](#field-structure)
+- [Dependencies](#dependencies)
+
 ## Building and Installing
 ### Installing from PyPi
 Prebuilt versions of this module for python 3.11, 3.12 and 3.13 for Windows and most Linuxsystems can be installed directly by using pip.
