@@ -434,6 +434,27 @@ std::shared_ptr<VoxelGrid> RadFiled3D::Storage::V1::CartesianFieldAccessor::acce
 	return std::make_shared<VoxelGrid>(this->field_dimensions, this->voxel_dimensions, std::shared_ptr<VoxelLayer>(layer));
 }
 
+std::map<std::string, std::shared_ptr<VoxelGrid>> RadFiled3D::Storage::V1::CartesianFieldAccessor::accessLayerAcrossChannels(std::istream& buffer, const std::string& layer_name) const
+{
+	std::map<std::string, std::shared_ptr<VoxelGrid>> layers = std::map<std::string, std::shared_ptr<VoxelGrid>>();
+
+	for (auto& channel : this->channels_layers_offsets) {
+		auto layer_block_itr = channel.second.layers.find(layer_name);
+		if (layer_block_itr == channel.second.layers.end())
+			continue;
+		auto& channel_block = channel.second.channel_block;
+		auto& layer_block = layer_block_itr->second;
+		buffer.seekg(this->getFieldDataOffset() + channel_block.offset + layer_block.offset + sizeof(FiledTypes::V1::ChannelHeader), std::ios::beg);
+		char* data_buffer = new char[layer_block.size];
+		buffer.read(data_buffer, layer_block.size);
+		VoxelLayer* layer = this->serializer->deserializeLayer(data_buffer, layer_block.size);
+		delete[] data_buffer;
+		layers.insert(std::make_pair(channel.first, std::make_shared<VoxelGrid>(this->field_dimensions, this->voxel_dimensions, std::shared_ptr<VoxelLayer>(layer))));
+	}
+
+	return layers;
+}
+
 IVoxel* RadFiled3D::Storage::V1::CartesianFieldAccessor::accessVoxelRaw(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const glm::uvec3& voxel_idx) const
 {
 	const size_t idx = this->default_grid->get_voxel_idx(voxel_idx.x, voxel_idx.y, voxel_idx.z);

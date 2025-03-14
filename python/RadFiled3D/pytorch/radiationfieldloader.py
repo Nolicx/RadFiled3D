@@ -356,6 +356,33 @@ class CartesianFieldSingleLayerDataset(CartesianFieldDataset):
         return (self.transform(layer, idx), self.transform_origin(metadata, idx))
 
 
+class CartesianFieldLayeredDataset(CartesianFieldDataset):
+    """
+    A dataset that loads all layers by name across all available channels of a radiation field as VoxelGrids.
+    Useful, when a special layer that occurs in multiple channels is needed for training.
+    To utilize this dataset class, the method transform must be implemented in a derived class.
+    """
+
+    def __init__(self, file_paths: list[str] = None, zip_file: str = None, metadata_load_mode: MetadataLoadMode = MetadataLoadMode.HEADER, layer_name: str = None):
+        super().__init__(file_paths=file_paths, zip_file=zip_file, metadata_load_mode=metadata_load_mode)
+        self.layer_name: str = layer_name
+
+    def set_layer(self, layer_name: str):
+        self.layer_name = layer_name
+
+    def __getitem__(self, idx: int) -> Tuple[dict[str, VoxelGrid], Union[RadiationFieldMetadata, None]]:
+        assert self.layer_name is not None, "Layer must be set before loading the radiation field."
+        if self.is_dataset_zipped:
+            layers = self.field_accessor.access_layer_across_channels_from_buffer(self.load_file_buffer(idx), self.layer_name)
+        else:
+            layers = self.field_accessor.access_layer_across_channels(self.file_paths[idx], self.layer_name)
+        metadata = self._get_metadata(idx)
+        return (self.transform(layers, idx), self.transform_origin(metadata, idx))
+    
+    def transform(self, layers: dict[str, VoxelGrid], idx: int) -> Tensor:
+        raise NotImplementedError("transform must be implemented in derived class.")
+
+
 class PolarFieldSingleLayerDataset(PolarFieldDataset):
     """
     A dataset that loads single layers from a single channel of a radiation field as PolarSegments.

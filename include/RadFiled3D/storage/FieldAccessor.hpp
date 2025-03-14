@@ -226,6 +226,13 @@ namespace RadFiled3D {
 			*/
 			virtual std::shared_ptr<VoxelGrid> accessLayer(std::istream& buffer, const std::string& channel_name, const std::string& layer_name) const = 0;
 
+			/** access all channels of a layer from a buffer and return a shared pointer to it for each channel.
+			* @param buffer The buffer to access the layer from
+			* @param layer_name The name of the layer to access
+			* @return A shared pointer to a map containing all instances of the desired layer for each channel.
+			*/
+			virtual std::map<std::string, std::shared_ptr<VoxelGrid>> accessLayerAcrossChannels(std::istream& buffer, const std::string& layer_name) const = 0;
+
 			template<typename dtype, typename VoxelT = ScalarVoxel<dtype>>
 			std::shared_ptr<VoxelT> accessVoxel(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const glm::uvec3& voxel_idx) const {
 				IVoxel* voxel = this->accessVoxelRaw(buffer, channel_name, layer_name, voxel_idx);
@@ -350,6 +357,7 @@ namespace RadFiled3D {
 				virtual std::shared_ptr<IRadiationField> accessField(std::istream& buffer) const override;
 				virtual std::shared_ptr<VoxelGridBuffer> accessChannel(std::istream& buffer, const std::string& channel_name) const override;
 				virtual std::shared_ptr<VoxelGrid> accessLayer(std::istream& buffer, const std::string& channel_name, const std::string& layer_name) const override;
+				virtual std::map<std::string, std::shared_ptr<VoxelGrid>> accessLayerAcrossChannels(std::istream& buffer, const std::string& layer_name) const override;
 
 				virtual size_t getFieldDataOffset() const override;
 				virtual SerializationData* generateSerializationBuffer() const override {

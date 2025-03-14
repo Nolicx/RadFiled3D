@@ -915,6 +915,26 @@ class CartesianFieldAccessor(FieldAccessor):
         """
         ...
 
+    def access_layer_across_channels_from_buffer(self, buffer: bytes, layer_name: str) -> dict[str, VoxelGrid]:
+        """
+        Get a layer by name from a data buffer across all channels.
+
+        :param buffer: The buffer to load the radiation field from.
+        :param layer_name: The name of the layer.
+        :return: All layers with the specified name across all channels with the channel name as key.
+        """
+        ...
+
+    def access_layer_across_channels(self, file: str, layer_name: str) -> dict[str, VoxelGrid]:
+        """
+        Get a layer by name from a file across all channels.
+
+        :param file: The file path to the stored radiation field.
+        :param layer_name: The name of the layer.
+        :return: All layers with the specified name across all channels with the channel name as key.
+        """
+        ...
+
     def access_voxel_from_buffer(self, buffer: bytes, channel_name: str, layer_name: str, idx: uvec3) -> Voxel:
         """
         Get a voxel at a specific quantized index from a data buffer.

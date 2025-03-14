@@ -1758,6 +1758,14 @@ PYBIND11_MODULE(RadFiled3D, m) {
 			    std::ifstream stream(file, std::ios::binary);
 			    return self.accessLayer(stream, channel_name, layer_name);
 		    })
+            .def("access_layer_across_channels", [](const Storage::CartesianFieldAccessor& self, const std::string& file, const std::string& layer_name) {
+			    std::ifstream stream(file, std::ios::binary);
+			    return self.accessLayerAcrossChannels(stream, layer_name);
+			})
+            .def("access_layer_across_channels_from_buffer", [](const Storage::CartesianFieldAccessor& self, const py::bytes& bytes, const std::string& layer_name) {
+			    std::istringstream stream(static_cast<std::string>(bytes));
+			    return self.accessLayerAcrossChannels(stream, layer_name);
+			})
 			.def("access_channel", [](const Storage::CartesianFieldAccessor& self, const std::string& file, const std::string& channel_name) {
 			    std::ifstream stream(file, std::ios::binary);
 			    return self.accessChannel(stream, channel_name);
@@ -1788,6 +1796,22 @@ PYBIND11_MODULE(RadFiled3D, m) {
             });
         
 		py::class_<Storage::V1::CartesianFieldAccessor, std::shared_ptr<Storage::V1::CartesianFieldAccessor>, Storage::CartesianFieldAccessor>(m, "CartesianFieldAccessorV1")
+            .def(py::pickle(
+                [](const std::shared_ptr<Storage::V1::CartesianFieldAccessor>& self) {
+                    auto data = FieldAccessor::Serialize(self);
+                    return FieldAccessorPickleTuple(self->getFieldType(), data);
+                },
+                [](const FieldAccessorPickleTuple& t) {
+                    FieldType type = std::get<0>(t);
+                    if (type != FieldType::Cartesian) {
+                        throw std::runtime_error("Unsupported field type: " + std::to_string(static_cast<int>(type)));
+                    }
+                    if (std::get<1>(t).size() == 0) {
+                        throw std::runtime_error("Empty data");
+                    }
+                    return std::dynamic_pointer_cast<Storage::V1::CartesianFieldAccessor>(FieldAccessor::Deserialize(std::get<1>(t)));
+                }
+            ))
             .def(py::init([](const std::shared_ptr<FieldAccessor>& base) { return std::dynamic_pointer_cast<Storage::V1::CartesianFieldAccessor>(base); }))
             .def("get_voxel_count", [](const V1::CartesianFieldAccessor& self) {
 			    return self.getVoxelCount();
