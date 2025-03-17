@@ -9,6 +9,7 @@
 #include <fstream>
 #include <memory>
 
+
 using namespace RadFiled3D;
 using namespace RadFiled3D::Storage;
 using namespace RadFiled3D::Storage::FiledTypes;
@@ -99,7 +100,7 @@ void RadFiled3D::Storage::V1::CartesianFieldAccessor::SerializationData::deseria
 	this->channels_layers_offsets = FileParser::DeserializeChannelsLayersOffsets(data);
 }
 
-std::vector<char> RadFiled3D::Storage::FieldAccessor::Serialize(const std::shared_ptr<FieldAccessor> accessor)
+std::vector<char> RadFiled3D::Storage::FieldAccessor::Serialize(const FieldAccessor* accessor)
 {
 	FieldAccessor::SerializationData* sdata = accessor->generateSerializationBuffer();
 	std::vector<char> additional_data = sdata->serialize_additional_data();
@@ -470,7 +471,8 @@ IVoxel* RadFiled3D::Storage::V1::CartesianFieldAccessor::accessVoxelRawByCoord(s
 void RadFiled3D::Storage::V1::PolarFieldAccessor::initialize(std::istream& buffer)
 {
 	this->metadata_fileheader_size = RadFiled3D::Storage::V1::MetadataAccessor().get_metadata_size(buffer) + sizeof(Storage::FiledTypes::VersionHeader);
-	buffer.seekg(sizeof(VersionHeader) + sizeof(FiledTypes::V1::RadiationFieldHeader), std::ios::beg);
+	
+	buffer.seekg(this->getMetadataFileheaderOffset() + sizeof(FiledTypes::V1::RadiationFieldHeader), std::ios::beg);
 	FiledTypes::V1::PolarHeader ph;
 	buffer.read((char*)&ph, sizeof(FiledTypes::V1::PolarHeader));
 

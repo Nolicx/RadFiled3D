@@ -1668,22 +1668,19 @@ PYBIND11_MODULE(RadFiled3D, m) {
             .value("V1", Storage::StoreVersion::V1);
 
         py::class_<RadFiled3D::Storage::FieldAccessor, std::shared_ptr<FieldAccessor>>(m, "FieldAccessor")
-			/*.def(py::pickle(
-				[](const std::shared_ptr<FieldAccessor>& self) {
-                    auto data = FieldAccessor::Serialize(self);
-                    return FieldAccessorPickleTuple(self->getFieldType(), data);
-				},
+			.def(py::pickle(    // general fallback for all FieldAccessor types. No explicit testing if the type python is expecting matches the unpickle procedure loaded, but should be fine for future accessors.
+                [](const Storage::FieldAccessor& self) {
+                    auto data = FieldAccessor::Serialize(&self);
+                    return FieldAccessorPickleTuple(self.getFieldType(), data);
+                },
                 [](const FieldAccessorPickleTuple& t) {
-					FieldType type = std::get<0>(t);
-                    if (type != FieldType::Cartesian && type != FieldType::Polar) {
-                        throw std::runtime_error("Unsupported field type: " + std::to_string(static_cast<int>(type)));
+                    FieldType type = std::get<0>(t);
+                    if (std::get<1>(t).size() == 0) {
+                        throw std::runtime_error("Empty data");
                     }
-					if (std::get<1>(t).size() == 0) {
-						throw std::runtime_error("Empty data");
-					}
                     return FieldAccessor::Deserialize(std::get<1>(t));
-		        }
-            ))*/
+                }
+            ))
             .def("get_field_type", [](const FieldAccessor& self) {
                 return self.getFieldType();
             })
@@ -1797,9 +1794,9 @@ PYBIND11_MODULE(RadFiled3D, m) {
         
 		py::class_<Storage::V1::CartesianFieldAccessor, std::shared_ptr<Storage::V1::CartesianFieldAccessor>, Storage::CartesianFieldAccessor>(m, "CartesianFieldAccessorV1")
             .def(py::pickle(
-                [](const std::shared_ptr<Storage::V1::CartesianFieldAccessor>& self) {
-                    auto data = FieldAccessor::Serialize(self);
-                    return FieldAccessorPickleTuple(self->getFieldType(), data);
+                [](const Storage::V1::CartesianFieldAccessor& self) {
+                    auto data = FieldAccessor::Serialize(&self);
+                    return FieldAccessorPickleTuple(self.getFieldType(), data);
                 },
                 [](const FieldAccessorPickleTuple& t) {
                     FieldType type = std::get<0>(t);
@@ -1849,6 +1846,22 @@ PYBIND11_MODULE(RadFiled3D, m) {
 			});
 
 		py::class_<V1::PolarFieldAccessor, std::shared_ptr<V1::PolarFieldAccessor>, Storage::PolarFieldAccessor>(m, "PolarFieldAccessorV1")
+            .def(py::pickle(
+                [](const Storage::V1::PolarFieldAccessor& self) {
+                    auto data = FieldAccessor::Serialize(&self);
+                    return FieldAccessorPickleTuple(self.getFieldType(), data);
+                },
+                [](const FieldAccessorPickleTuple& t) {
+                    FieldType type = std::get<0>(t);
+                    if (type != FieldType::Polar) {
+                        throw std::runtime_error("Unsupported field type: " + std::to_string(static_cast<int>(type)));
+                    }
+                    if (std::get<1>(t).size() == 0) {
+                        throw std::runtime_error("Empty data");
+                    }
+                    return std::dynamic_pointer_cast<Storage::V1::PolarFieldAccessor>(FieldAccessor::Deserialize(std::get<1>(t)));
+                }
+            ))
             .def("get_voxel_count", [](const V1::PolarFieldAccessor& self) {
                 return self.getVoxelCount();
             })

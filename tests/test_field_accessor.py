@@ -1,5 +1,6 @@
-from RadFiled3D.RadFiled3D import CartesianFieldAccessor, FieldType, FieldStore, StoreVersion, CartesianRadiationField, DType, vec3, RadiationFieldMetadataV1, RadiationFieldSimulationMetadataV1, RadiationFieldXRayTubeMetadataV1, RadiationFieldSoftwareMetadataV1
+from RadFiled3D.RadFiled3D import CartesianFieldAccessor, PolarFieldAccessor, uvec2, PolarRadiationField, FieldType, FieldStore, StoreVersion, CartesianRadiationField, DType, vec3, RadiationFieldMetadataV1, RadiationFieldSimulationMetadataV1, RadiationFieldXRayTubeMetadataV1, RadiationFieldSoftwareMetadataV1
 import numpy as np
+import pickle
 
 
 METADATA = RadiationFieldMetadataV1(
@@ -38,20 +39,45 @@ def test_construction():
     assert vx_count == true_vx_count
     assert accessor.get_field_type() == FieldType.CARTESIAN
 
-#def test_pickle():
-#    field = CartesianRadiationField(vec3(1, 1, 1), vec3(0.1, 0.1, 0.1))
-#    field.add_channel("channel1")
-#    field.get_channel("channel1").add_layer("layer1", "unit1", DType.FLOAT32)
-#    FieldStore.store(field, METADATA, "test06.rf3", StoreVersion.V1)
+def test_pickle_cartesian():
+    field = CartesianRadiationField(vec3(1, 1, 1), vec3(0.1, 0.1, 0.1))
+    field.add_channel("channel1")
+    field.get_channel("channel1").add_layer("layer1", "unit1", DType.FLOAT32)
+    FieldStore.store(field, METADATA, "test06.rf3", StoreVersion.V1)
 
-#    accessor = FieldStore.construct_field_accessor("test06.rf3")
-#    pickled_accessor = pickle.dumps(accessor)
-#    loaded_accessor = pickle.loads(pickled_accessor)
+    accessor = FieldStore.construct_field_accessor("test06.rf3")
+    pickled_accessor = pickle.dumps(accessor)
+    loaded_accessor: CartesianFieldAccessor = pickle.loads(pickled_accessor)
 
-#    b_repr = repr(loaded_accessor)
-#    assert loaded_accessor.get_voxel_count() == field.get_voxel_counts().x * field.get_voxel_counts().y * field.get_voxel_counts().z
-#    assert loaded_accessor.get_field_type() == accessor.get_field_type()
-#    assert b_repr == a_repr
+    assert isinstance(loaded_accessor, CartesianFieldAccessor)
+
+    a_repr = repr(accessor)
+    b_repr = repr(loaded_accessor)
+
+    assert loaded_accessor.get_voxel_count() == field.get_voxel_counts().x * field.get_voxel_counts().y * field.get_voxel_counts().z
+    assert loaded_accessor.get_field_type() == accessor.get_field_type()
+    assert b_repr == a_repr
+
+
+def test_pickle_polar():
+    field = PolarRadiationField(uvec2(10, 10))
+    field.add_channel("channel1")
+    field.get_channel("channel1").add_layer("layer1", "unit1", DType.FLOAT32)
+
+    FieldStore.store(field, METADATA, "test06_2.rf3", StoreVersion.V1)
+
+    accessor = FieldStore.construct_field_accessor("test06_2.rf3")
+    pickled_accessor = pickle.dumps(accessor)
+    loaded_accessor: PolarFieldAccessor = pickle.loads(pickled_accessor)
+
+    assert isinstance(loaded_accessor, PolarFieldAccessor)
+
+    a_repr = repr(accessor)
+    b_repr = repr(loaded_accessor)
+
+    assert loaded_accessor.get_voxel_count() == field.get_segments_count().x * field.get_segments_count().y
+    assert loaded_accessor.get_field_type() == accessor.get_field_type()
+    assert b_repr == a_repr
 
 
 def test_accessing_field():
