@@ -2,9 +2,9 @@
 
 ![Tests](https://github.com/Centrasis/RadFiled3D/actions/workflows/package-test-publish.yml/badge.svg)
 
-This Repository contains the file format and API according to the Paper: "RadField3D: A Data Generator and Data Format for Deep Learning in Radiation-Protection Dosimetry for Medical Applications".
+This Repository contains the file format and API according to the Paper: "[RadField3D: A Data Generator and Data Format for Deep Learning in Radiation-Protection Dosimetry for Medical Applications](https://iopscience.iop.org/article/10.1088/1361-6498/add53d)".
 
-The aim of this library is, to provide a simple to use API for a structured, binary file format, that can store all relevant information from a three dimensional radiation field calculated by applications that use algorithms like Monte-Carlo radiation transport simulations. Such a binary file format is useful, when one needs to process a huge amount of radiation field files like when training a neural network. With that use-case in mind, RadFiled3D also provides a python interface with a pyTorch integration.
+The aim of this library is, to provide a simple to use API for a structured, binary file format, that can store all relevant information from a three dimensional radiation field calculated by applications that use algorithms like Monte-Carlo radiation transport simulations. Such a binary file format is useful, when one needs to process a huge amount of radiation field files like when training a neural network. With that use-case in mind, RadFiled3D also provides a python interface with a pyTorch integration. In order to directly iterate a dataset generated with the RadField3D tool, just jump to the section [RadField3D Datasets](#direct-integration-with-radfield3d-datasets).
 
 ## 🌟 Why Use RadFiled3D
 - **Efficient Storage**: Structured, binary file format for storing large amounts of radiation field data.
@@ -18,6 +18,7 @@ The aim of this library is, to provide a simple to use API for a structured, bin
 - [Getting Started](#getting-started)
   - [From Python](#from-python)
   - [Integrating with pyTorch](#integrating-with-pytorch)
+    - [RadField3D Datasets](#direct-integration-with-radfield3d-datasets)
   - [Tracing paths in Cartesian Coordinate Systems](#tracing-paths-in-cartesian-coordinate-systems)
   - [Faster loading of field series](#faster-loading-of-field-series)
   - [From C++](#from-c)
@@ -88,8 +89,10 @@ metadata2 = FieldStore.load_metadata("test01.rf3")
 ### Integrating with pyTorch
 RadFiled3D comes with a submodule at `RadFiled3D.pytorch`. This module provides some dataset classes to support the usage. Datasets can be loaded from folders or .zip-Files.
 ```python
-from RadFiled3D.pytorch import MetadataLoadMode, CartesianFieldSingleLayerDataset, DataLoaderBuilder
-from RadFiled3D.pytorch.helpers import load_tensor_from_layer
+from RadFiled3D.pytorch.datasets import MetadataLoadMode
+from RadFiled3D.pytorch.datasets.cartesian import CartesianFieldSingleLayerDataset
+from RadFiled3D.pytorch import DataLoaderBuilder
+from RadFiled3D.pytorch.helpers import RadiationFieldHelper
 from RadFiled3D.RadFiled3D import VoxelGrid
 from torch import Tensor
 from RadFiled3D.metadata.v1 import Metadata
@@ -100,7 +103,7 @@ from RadFiled3D.metadata.v1 import Metadata
 # The argument idx will contain the requested index from the dataset just in case someone wants to alter the return value based on it.
 class MyLayerDataset(CartesianFieldSingleLayerDataset):
     def transform(self, layer: VoxelGrid, idx: int) -> Tensor:
-        return load_tensor_from_layer(layer)    # transform the layers data
+        return RadiationFieldHelper.load_tensor_from_layer(layer)    # transform the layers data
 
     def transform_origin(self, metadata: Metadata, idx) -> Tensor:
         direction = metadata.get_header().simulation.tube.radiation_direction   # transform selected data from the header
@@ -128,6 +131,36 @@ train_dl = builder.build_train_dataloader(
 )
 
 # iterate over the dataset
+for field, metadata in train_dl:
+    pass
+```
+
+#### Direct integration with RadField3D datasets
+Comming with the next update to the PyPi release!
+
+Directly iterate RadField3D datasets either by loading whole fields or iterating each voxel independently. The dataset classes will return pyTorch compatible NamedTuples, that preserve the structure of the raw radiation fields and layers.
+```python
+from RadField3D.pytorch.datasets.radfield3d import RadField3DDataset
+from RadField3D.pytorch.datasets.radfield3d import RadField3DVoxelwiseDataset
+# import the pyTorch compatible datatypes
+from RadField3D.pytorch import RadiationField, DataLoaderBuilder
+
+
+builder = DataLoaderBuilder(
+    "./test_dataset_folder/",
+    train_ratio=0.7,
+    val_ratio=0.15,
+    test_ratio=0.15,
+    dataset_class=RadField3DDataset
+)
+
+train_dl = builder.build_train_dataloader(
+    batch_size=8,
+    shuffle=True,
+    worker_count=4
+)
+
+# iterate over the dataset using fully useable pyTorch classes
 for field, metadata in train_dl:
     pass
 ```
