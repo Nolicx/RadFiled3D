@@ -3,7 +3,8 @@ import os
 from torch.utils.data import random_split, DataLoader
 from typing import Type, Union, Callable
 from torch.utils.data import _utils as pt_utils
-from datasets import RadiationFieldDataset
+from .datasets import RadiationFieldDataset
+from .types import TrainingInputData
 
 
 class DataLoaderBuilder(object):
@@ -67,7 +68,7 @@ class DataLoaderBuilder(object):
         return ds
 
     @staticmethod
-    def checked_collate_fn(batch):
+    def collate_wrapper(batch):
         if isinstance(batch, list):
             return pt_utils.collate.default_collate(batch)
         else:
@@ -84,6 +85,9 @@ class DataLoaderBuilder(object):
         is_multiprocessing = worker_count is None or worker_count != 0
         if worker_count is None or worker_count < 0:
             worker_count = max(1, os.cpu_count() - 1)
+
+        
+        
         dl = DataLoader(
             dataset,
             batch_size=batch_size,
@@ -91,7 +95,7 @@ class DataLoaderBuilder(object):
             num_workers=worker_count,
             pin_memory=is_multiprocessing,
             persistent_workers=is_multiprocessing,
-            collate_fn=DataLoaderBuilder.checked_collate_fn
+            collate_fn=DataLoaderBuilder.collate_wrapper
         )
         dl.dataset._field_accessor = None
         return dl

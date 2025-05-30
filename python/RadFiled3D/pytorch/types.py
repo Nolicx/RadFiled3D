@@ -18,7 +18,7 @@ class DirectionalInput(NamedTuple):
     spectrum: Tensor
 
 
-class PositionalInput(DirectionalInput):
+class PositionalInput(NamedTuple):
     direction: Tensor
     spectrum: Tensor
     position: Tensor

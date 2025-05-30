@@ -58,7 +58,7 @@ class RadField3DDataset(CartesianFieldDataset):
 
             input = DirectionalInput(
                 direction=tube_direction,
-                tube_spectrum=tube_spectrum
+                spectrum=tube_spectrum
             )
 
             return TrainingInputData(
@@ -101,6 +101,7 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
                 direction=torch.empty((len(self.file_paths), 3), dtype=torch.float32).share_memory_(),
                 spectrum=torch.empty((len(self.file_paths), first_data.input.spectrum.shape[0]), dtype=torch.float32).share_memory_()
             )
+
             self.cached_fields = RadiationField(
                 scatter_field=RadiationFieldChannel(
                     spectrum=torch.empty((len(self.file_paths), first_data.input.spectrum.shape[0], *field_voxel_counts), dtype=torch.float32).share_memory_(),
@@ -113,6 +114,7 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
                     error=torch.empty((len(self.file_paths), 1, *field_voxel_counts), dtype=torch.float32).share_memory_()
                 )
             )
+
 
             for i in range(len(self.file_paths)):
                 data = super().__getitem__(i)
