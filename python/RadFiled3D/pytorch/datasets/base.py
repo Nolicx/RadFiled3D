@@ -179,17 +179,6 @@ class RadiationFieldDataset(Dataset):
     def __iter__(self):
         return RadiationFieldDatasetIterator(self)
 
-    def transform(self, field: Union[RawRadiationField, VoxelGrid, PolarSegments, Voxel], idx: int) -> Union[RadiationField, RadiationFieldChannel, PolarSegments, Voxel, Tensor]:
-        """
-        Override to transform a RadFiled3D type into a torch tensor.
-        This should be used as the target for the model.
-        By default this just returns the original RadFiled3D type.
-        :param field: The original RadFiled3D type.
-        :param idx: The index of the element in the dataset.
-        :return: The transformed RadFiled3D type.
-        """
-        return field
-
     def transform_origin(self, metadata: RadiationFieldMetadata, idx: int) -> Union[PositionalInput, DirectionalInput, RadiationFieldMetadata]:
         """
         Override to transform a RadiationFieldMetadata into a torch tensor.
