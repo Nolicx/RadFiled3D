@@ -96,18 +96,20 @@ from RadFiled3D.pytorch.helpers import RadiationFieldHelper
 from RadFiled3D.RadFiled3D import VoxelGrid
 from torch import Tensor
 from RadFiled3D.metadata.v1 import Metadata
+from RadFiled3D.pytorch.types import TrainingInputData, DirectionalInput
 
 
 # Extend one of the provided dataset classes to match the output to the current needs
-# The argument type of 'layer' may vary depending on the dataset type between RadiationField (Whole field), VoxelGridBuffer (Channel), VoxelGrid (Layer) and Voxel (Single Voxel)
-# The argument idx will contain the requested index from the dataset just in case someone wants to alter the return value based on it.
 class MyLayerDataset(CartesianFieldSingleLayerDataset):
-    def transform(self, layer: VoxelGrid, idx: int) -> Tensor:
-        return RadiationFieldHelper.load_tensor_from_layer(layer)    # transform the layers data
+    def __getitem____(self, idx: int) -> TrainingInputData:
+        layer, metadata = super().__getitem__(idx)
+        tube_dir = metadata.get_header().simulation.tube.radiation_direction
+        # transform the layers data to a tensor
+        return TrainingInputData(
+            input=DirectionalInput(direction=torch.tensor([tube_dir.x, tube_dir.y, tube_dir.z]))
+            ground_truth=RadiationFieldHelper.load_tensor_from_layer(layer)
+        )
 
-    def transform_origin(self, metadata: Metadata, idx) -> Tensor:
-        direction = metadata.get_header().simulation.tube.radiation_direction   # transform selected data from the header
-        return torch.tensor([direction.x, direction.y, direction.z], dtype=torch.float32)
 
 def finalize_dataset(dataset: MyLayerDataset)
     dataset.set_channel_and_layer("test_channel", "test_layer")
@@ -136,8 +138,6 @@ for field, metadata in train_dl:
 ```
 
 #### Direct integration with RadField3D datasets
-Comming with the next update to the PyPi release!
-
 Directly iterate RadField3D datasets either by loading whole fields or iterating each voxel independently. The dataset classes will return pyTorch compatible NamedTuples, that preserve the structure of the raw radiation fields and layers.
 ```python
 from RadField3D.pytorch.datasets.radfield3d import RadField3DDataset

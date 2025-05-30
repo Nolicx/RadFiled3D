@@ -115,9 +115,6 @@ class CartesianFieldLayeredDataset(CartesianFieldDataset):
             layers = self.field_accessor.access_layer_across_channels(self.file_paths[idx], self.layer_name)
         metadata = self._get_metadata(idx)
         return (self.transform(layers, idx), self.transform_origin(metadata, idx))
-    
-    def transform(self, layers: dict[str, VoxelGrid], idx: int) -> Tensor:
-        raise NotImplementedError("transform must be implemented in derived class.")
 
 
 class CartesianSingleVoxelDataset(CartesianFieldSingleLayerDataset):
