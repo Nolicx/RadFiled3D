@@ -23,11 +23,14 @@ class RadField3DDataset(CartesianFieldDataset):
         super().__init__(file_paths=file_paths, zip_file=zip_file, metadata_load_mode=metadata_load_mode)
 
     def __getitem__(self, idx: int) -> TrainingInputData:
-        with torch.no_grad():
-            field, metadata = super().__getitem__(idx)
-            assert isinstance(field, CartesianRadiationField), "Dataset must contain CartesianRadiationFields."
-            assert isinstance(metadata, RadiationFieldMetadataV1), "Metadata must be of type RadiationFieldMetadataV1."
+        field, metadata = super().__getitem__(idx)
+        assert isinstance(field, CartesianRadiationField), "Dataset must contain CartesianRadiationFields."
+        assert isinstance(metadata, RadiationFieldMetadataV1), "Metadata must be of type RadiationFieldMetadataV1."
+        return self.transform2training_input(field, metadata)
 
+
+    def transform2training_input(self, field: CartesianRadiationField, metadata: RadiationFieldMetadataV1) -> TrainingInputData:
+        with torch.no_grad():
             rad_field = RadiationField(
                 scatter_field=RadiationFieldChannel(
                     spectrum=RadiationFieldHelper.load_tensor_from_field(field, "scatter_field", "spectrum"),
@@ -85,6 +88,40 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
         self.cached_metadata: DirectionalInput = None
         self.cached_fields: RadiationField = None
 
+    def fetch_data2cache(self, files: list[str], external_fields_cache: RadiationField = None, external_metadata_cache: DirectionalInput = None) -> tuple[DirectionalInput, RadiationField]:
+        """
+        Fetches the data for a single voxel and returns it as a TrainingInputData instance.
+        This method is used to load the data for a single voxel from the dataset.
+        :param files: List of file paths to the radiation fields.
+        :param external_fields_cache: Optional external cache for the radiation fields. Default: None, which means the internal cache will be used.
+        :param external_metadata_cache: Optional external cache for the metadata. Default: None, which means the internal cache will be used.
+        :return: A tuple containing the metadata and the radiation fields as RadiationField and DirectionalInput instances.
+        """
+        fields_cache = self.cached_fields if external_fields_cache is None else external_fields_cache
+        metadata_cache = self.cached_metadata if external_metadata_cache is None else external_metadata_cache
+        for i, file in enumerate(files):
+            field = self._get_field_by_path(file)
+            metadata = self._get_metadata_by_path(file)
+            data = self.transform2training_input(field, metadata)
+            metadata_cache.direction[i] = data.input.direction.detach()
+            metadata_cache.spectrum[i] = data.input.spectrum.detach()
+            fields_cache.scatter_field.spectrum[i] = data.ground_truth.scatter_field.spectrum.detach()
+            fields_cache.scatter_field.fluence[i] = data.ground_truth.scatter_field.fluence.detach()
+            fields_cache.scatter_field.error[i] = data.ground_truth.scatter_field.error.detach()
+            fields_cache.xray_beam.spectrum[i] = data.ground_truth.xray_beam.spectrum.detach()
+            fields_cache.xray_beam.fluence[i] = data.ground_truth.xray_beam.fluence.detach()
+            fields_cache.xray_beam.error[i] = data.ground_truth.xray_beam.error.detach()
+        metadata_cache.direction.requires_grad_(False)
+        metadata_cache.spectrum.requires_grad_(False)
+        fields_cache.scatter_field.spectrum.requires_grad_(False)
+        fields_cache.scatter_field.fluence.requires_grad_(False)
+        fields_cache.scatter_field.error.requires_grad_(False)
+        fields_cache.xray_beam.spectrum.requires_grad_(False)
+        fields_cache.xray_beam.fluence.requires_grad_(False)
+        fields_cache.xray_beam.error.requires_grad_(False)
+        
+        return metadata_cache, fields_cache
+
     def prefetch_data(self):
         """
         Prefetches all data in the dataset to speed up training.
@@ -115,28 +152,38 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
                 )
             )
 
+            self.cached_metadata, self.cached_fields = self.fetch_data2cache(self.file_paths)
+    
+    def load_voxel_training_data_from_cache(self, idx: Union[int, Tensor], xyz_idx: Union[Tensor, tuple[int, int, int]], external_fields_cache: RadiationField = None, external_metadata_cache: DirectionalInput = None) -> TrainingInputData:
+        cached_fields = self.cached_fields if external_fields_cache is None else external_fields_cache
+        cached_metadata = self.cached_metadata if external_metadata_cache is None else external_metadata_cache
 
-            for i in range(len(self.file_paths)):
-                data = super().__getitem__(i)
-                self.cached_metadata.direction[i] = data.input.direction.detach()
-                self.cached_metadata.spectrum[i] = data.input.spectrum.detach()
+        field = RadiationField(
+            scatter_field=RadiationFieldChannel(
+                spectrum=cached_fields.scatter_field.spectrum[idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone(),
+                fluence=cached_fields.scatter_field.fluence[idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone(),
+                error=cached_fields.scatter_field.error[idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone()
+            ),
+            xray_beam=RadiationFieldChannel(
+                spectrum=cached_fields.xray_beam.spectrum[idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone(),
+                fluence=cached_fields.xray_beam.fluence[idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone(),
+                error=cached_fields.xray_beam.error[idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone()
+            )
+        )
+        # normalize xyz to 0 to 1
+        field_voxel_counts = torch.tensor([self.field_voxel_counts.x, self.field_voxel_counts.y, self.field_voxel_counts.z], dtype=torch.float32, device=xyz.device, requires_grad=False)
+        xyz = xyz / (field_voxel_counts - 1.0) # Normalize xyz to [0, 1]
 
-                self.cached_fields.scatter_field.spectrum[i] = data.ground_truth.scatter_field.spectrum.detach()
-                self.cached_fields.scatter_field.fluence[i] = data.ground_truth.scatter_field.fluence.detach()
-                self.cached_fields.scatter_field.error[i] = data.ground_truth.scatter_field.error.detach()
-                self.cached_fields.xray_beam.spectrum[i] = data.ground_truth.xray_beam.spectrum.detach()
-                self.cached_fields.xray_beam.fluence[i] = data.ground_truth.xray_beam.fluence.detach()
-                self.cached_fields.xray_beam.error[i] = data.ground_truth.xray_beam.error.detach()
-            
-            self.cached_metadata.direction.requires_grad_(False)
-            self.cached_metadata.spectrum.requires_grad_(False)
-            self.cached_fields.scatter_field.spectrum.requires_grad_(False)
-            self.cached_fields.scatter_field.fluence.requires_grad_(False)
-            self.cached_fields.scatter_field.error.requires_grad_(False)
-            self.cached_fields.xray_beam.spectrum.requires_grad_(False)
-            self.cached_fields.xray_beam.fluence.requires_grad_(False)
-            self.cached_fields.xray_beam.error.requires_grad_(False)
-                
+        input = PositionalInput(
+            position=xyz,
+            direction=cached_metadata.direction[idx].clone(),
+            spectrum=cached_metadata.spectrum[idx].clone()
+        )
+
+        return TrainingInputData(
+            input=input,
+            ground_truth=field
+        )
 
     def __getitem__(self, idx: int) -> TrainingInputData:
         voxel_idx = idx % self.voxels_per_field
@@ -150,32 +197,7 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
         xyz_idx = xyz.long()
 
         if self.cached_metadata is not None:
-            field = RadiationField(
-                scatter_field=RadiationFieldChannel(
-                    spectrum=self.cached_fields.scatter_field.spectrum[file_idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone(),
-                    fluence=self.cached_fields.scatter_field.fluence[file_idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone(),
-                    error=self.cached_fields.scatter_field.error[file_idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone()
-                ),
-                xray_beam=RadiationFieldChannel(
-                    spectrum=self.cached_fields.xray_beam.spectrum[file_idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone(),
-                    fluence=self.cached_fields.xray_beam.fluence[file_idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone(),
-                    error=self.cached_fields.xray_beam.error[file_idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone()
-                )
-            )
-            # normalize xyz to 0 to 1
-            field_voxel_counts = torch.tensor([self.field_voxel_counts.x, self.field_voxel_counts.y, self.field_voxel_counts.z], dtype=torch.float32, device=xyz.device, requires_grad=False)
-            xyz = xyz / (field_voxel_counts - 1.0) # Normalize xyz to [0, 1]
-
-            input = PositionalInput(
-                position=xyz,
-                direction=self.cached_metadata.direction[file_idx].clone(),
-                spectrum=self.cached_metadata.spectrum[file_idx].clone()
-            )
-
-            return TrainingInputData(
-                input=input,
-                ground_truth=field
-            )
+            return self.load_voxel_training_data_from_cache(file_idx, xyz_idx)
         else:
             scatter_spectrum = self._get_voxel_flat(file_idx=file_idx, vx_idx=voxel_idx, channel_name="scatter_field", layer_name="spectrum").get_histogram()
             scatter_fluence = self._get_voxel_flat(file_idx=file_idx, vx_idx=voxel_idx, channel_name="scatter_field", layer_name="hits").get_data()
@@ -233,39 +255,10 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
             file_indices = indices // self.voxels_per_field
             voxel_indices = indices % self.voxels_per_field
             xyz = torch.empty((len(indices), 3), dtype=torch.float32, requires_grad=False, device=indices.device)
-            voxel_field_counts = torch.tensor([self.field_voxel_counts.x, self.field_voxel_counts.y, self.field_voxel_counts.z], dtype=torch.float32, device=indices.device, requires_grad=False)
             xyz[:, 0] = voxel_indices % self.field_voxel_counts.x
             xyz[:, 1] = (voxel_indices // self.field_voxel_counts.x) % self.field_voxel_counts.y
             xyz[:, 2] = voxel_indices // (self.field_voxel_counts.x * self.field_voxel_counts.y)
 
-            spectra_scatter = self.cached_fields.scatter_field.spectrum[file_indices, :, xyz[:, 0].long(), xyz[:, 1].long(), xyz[:, 2].long()].clone()
-            spectra_beam = self.cached_fields.xray_beam.spectrum[file_indices, :, xyz[:, 0].long(), xyz[:, 1].long(), xyz[:, 2].long()].clone()
-            fluence_scatter = self.cached_fields.scatter_field.fluence[file_indices, :, xyz[:, 0].long(), xyz[:, 1].long(), xyz[:, 2].long()].clone()
-            fluence_beam = self.cached_fields.xray_beam.fluence[file_indices, :, xyz[:, 0].long(), xyz[:, 1].long(), xyz[:, 2].long()].clone()
-            error_scatter = self.cached_fields.scatter_field.error[file_indices, :, xyz[:, 0].long(), xyz[:, 1].long(), xyz[:, 2].long()].clone()
-            error_beam = self.cached_fields.xray_beam.error[file_indices, :, xyz[:, 0].long(), xyz[:, 1].long(), xyz[:, 2].long()].clone()
-
-            xyz = xyz / (voxel_field_counts - 1.0) # Normalize xyz to [0, 1]
-
-            inputs = PositionalInput(
-                position=xyz,
-                direction=self.cached_metadata.direction[file_indices].clone(),
-                spectrum=self.cached_metadata.spectrum[file_indices].clone()
-            )
-
-            fields = RadiationField(
-                scatter_field=RadiationFieldChannel(
-                    spectrum=spectra_scatter,
-                    fluence=fluence_scatter,
-                    error=error_scatter
-                ),
-                xray_beam=RadiationFieldChannel(
-                    spectrum=spectra_beam,
-                    fluence=fluence_beam,
-                    error=error_beam
-                )
-            )
-            training_data = TrainingInputData(input=inputs, ground_truth=fields)
-            return training_data
+            return self.load_voxel_training_data_from_cache(file_indices, xyz.long())
         else:
             return super().__getitems__(indices)

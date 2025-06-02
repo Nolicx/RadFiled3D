@@ -75,12 +75,15 @@ class RadiationFieldDataset(Dataset):
         :param idx: The index of the file in the dataset.
         :return: The binary file buffer.
         """
+        return self.load_file_buffer_by_path(self.file_paths[idx])
+        
+    def load_file_buffer_by_path(self, file_path: str) -> bytes:
         if self.zip_file is not None:
             with zipfile.ZipFile(self.zip_file, 'r') as zip_ref:
-                with zip_ref.open(self.file_paths[idx]) as file:
+                with zip_ref.open(file_path) as file:
                     return file.read()
         else:
-            return open(self.file_paths[idx], 'rb').read()
+            return open(file_path, 'rb').read()
     
     def _get_field(self, idx: int) -> Union[RawRadiationField, CartesianRadiationField, PolarRadiationField]:
         """
@@ -88,10 +91,18 @@ class RadiationFieldDataset(Dataset):
         :param idx: The index of the file in the dataset.
         :return: The radiation field.
         """
+        return self._get_field_by_path(self.file_paths[idx])
+        
+    def _get_field_by_path(self, file_path: str) -> Union[RawRadiationField, CartesianRadiationField, PolarRadiationField]:
+        """
+        Loads a radiation field from the dataset given a file path.
+        :param file_path: The path to the file in the dataset.
+        :return: The radiation field.
+        """
         if self.is_dataset_zipped:
-            return self.field_accessor.access_field_from_buffer(self.load_file_buffer(idx))
+            return self.field_accessor.access_field_from_buffer(self.load_file_buffer_by_path(file_path))
         else:
-            return self.field_accessor.access_field(self.file_paths[idx])
+            return self.field_accessor.access_field(file_path)
 
     def check_dataset_integrity(self) -> bool:
         """
@@ -131,8 +142,16 @@ class RadiationFieldDataset(Dataset):
         :param idx: The index of the file in the dataset.
         :return: The metadata of the radiation field.
         """
+        return self._get_metadata_by_path(self.file_paths[idx])
+    
+    def _get_metadata_by_path(self, file_path: str) -> Union[RadiationFieldMetadata, None]:
+        """
+        Loads the metadata of a radiation field from the dataset given a file path. This method respects the metadata_load_mode.
+        :param file_path: The path to the file in the dataset.
+        :return: The metadata of the radiation field.
+        """
         if self.is_dataset_zipped:
-            file_buffer = self.load_file_buffer(idx)
+            file_buffer = self.load_file_buffer_by_path(file_path)
             if self.metadata_load_mode == MetadataLoadMode.FULL:
                 metadata: RadiationFieldMetadata = FieldStore.peek_metadata_from_buffer(file_buffer)
             elif self.metadata_load_mode == MetadataLoadMode.HEADER:
@@ -140,7 +159,6 @@ class RadiationFieldDataset(Dataset):
             else:
                 metadata = None
         else:
-            file_path = self.file_paths[idx]
             if self.metadata_load_mode == MetadataLoadMode.FULL:
                 metadata: RadiationFieldMetadata = FieldStore.load_metadata(file_path)
             elif self.metadata_load_mode == MetadataLoadMode.HEADER:
@@ -178,6 +196,17 @@ class RadiationFieldDataset(Dataset):
 
     def __iter__(self):
         return RadiationFieldDatasetIterator(self)
+
+    def transform(self, field: Union[RawRadiationField, VoxelGrid, PolarSegments, Voxel], idx: int) -> Union[RadiationField, RadiationFieldChannel, PolarSegments, Voxel, Tensor]:
+        """
+        Override to transform a RadFiled3D type into a torch tensor.
+        This should be used as the target for the model.
+        By default this just returns the original RadFiled3D type.
+        :param field: The original RadFiled3D type.
+        :param idx: The index of the element in the dataset.
+        :return: The transformed RadFiled3D type.
+        """
+        return field
 
     def transform_origin(self, metadata: RadiationFieldMetadata, idx: int) -> Union[PositionalInput, DirectionalInput, RadiationFieldMetadata]:
         """
