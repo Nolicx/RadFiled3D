@@ -154,9 +154,11 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
 
             self.cached_metadata, self.cached_fields = self.fetch_data2cache(self.file_paths)
     
-    def load_voxel_training_data_from_cache(self, idx: Union[int, Tensor], xyz_idx: Union[Tensor, tuple[int, int, int]], external_fields_cache: RadiationField = None, external_metadata_cache: DirectionalInput = None) -> TrainingInputData:
+    def load_voxel_training_data_from_cache(self, idx: Union[int, Tensor], xyz: Union[Tensor, tuple[int, int, int]], external_fields_cache: RadiationField = None, external_metadata_cache: DirectionalInput = None) -> TrainingInputData:
         cached_fields = self.cached_fields if external_fields_cache is None else external_fields_cache
         cached_metadata = self.cached_metadata if external_metadata_cache is None else external_metadata_cache
+        xyz = torch.tensor(xyz, dtype=torch.float32, device=cached_fields.scatter_field.fluence.device, requires_grad=False) if not isinstance(xyz, Tensor) else xyz
+        xyz_idx = xyz.long()
 
         field = RadiationField(
             scatter_field=RadiationFieldChannel(
@@ -194,10 +196,9 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
             voxel_idx // (self.field_voxel_counts.x * self.field_voxel_counts.y)
         )
         xyz = torch.tensor([xyz[0], xyz[1], xyz[2]], dtype=torch.float32, requires_grad=False)
-        xyz_idx = xyz.long()
 
         if self.cached_metadata is not None:
-            return self.load_voxel_training_data_from_cache(file_idx, xyz_idx)
+            return self.load_voxel_training_data_from_cache(file_idx, xyz)
         else:
             scatter_spectrum = self._get_voxel_flat(file_idx=file_idx, vx_idx=voxel_idx, channel_name="scatter_field", layer_name="spectrum").get_histogram()
             scatter_fluence = self._get_voxel_flat(file_idx=file_idx, vx_idx=voxel_idx, channel_name="scatter_field", layer_name="hits").get_data()
@@ -259,6 +260,6 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
             xyz[:, 1] = (voxel_indices // self.field_voxel_counts.x) % self.field_voxel_counts.y
             xyz[:, 2] = voxel_indices // (self.field_voxel_counts.x * self.field_voxel_counts.y)
 
-            return self.load_voxel_training_data_from_cache(file_indices, xyz.long())
+            return self.load_voxel_training_data_from_cache(file_indices, xyz)
         else:
             return super().__getitems__(indices)
