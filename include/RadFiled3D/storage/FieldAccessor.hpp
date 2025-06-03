@@ -1,6 +1,7 @@
 #pragma once
 #include <RadFiled3D/RadiationField.hpp>
 #include "RadFiled3D/storage/Types.hpp"
+#include "RadFiled3D/storage/FieldSerializer.hpp"
 #include <stdexcept>
 #include <map>
 
@@ -170,6 +171,15 @@ namespace RadFiled3D {
 			*/
 			virtual IVoxel* accessVoxelRawFlat(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, size_t voxel_idx) const = 0;
 
+			/** Accesses a set of voxels from a buffer and returns a vector of pointers to them
+			* @param buffer The buffer to access the voxels from
+			* @param channel_name The name of the channel the voxels are in
+			* @param layer_name The name of the layer the voxels are in
+			* @param voxel_indices The indices of the voxels in the layer
+			* @return A vector of pointers to the voxels
+			*/
+			virtual std::vector<IVoxel*> accessVoxelsRawFlat(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const std::vector<size_t>& voxel_indices) const = 0;
+
 			/** Accesses a channel from a buffer and returns a shared pointer to it
 			* @param buffer The buffer to access the channel from
 			* @param channel_name The name of the channel to access
@@ -179,6 +189,16 @@ namespace RadFiled3D {
 			std::shared_ptr<VoxelT> accessVoxelFlat(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, size_t voxel_idx) const {
 				IVoxel* voxel = this->accessVoxelRawFlat(buffer, channel_name, layer_name, voxel_idx);
 				return std::shared_ptr<VoxelT>((VoxelT*)voxel);
+			};
+
+			template<typename dtype, typename VoxelT = ScalarVoxel<dtype>>
+			std::vector<std::shared_ptr<VoxelT>> accessVoxelsFlat(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const std::vector<size_t>& voxel_indices) const {
+				std::vector<IVoxel*> voxels_raw = this->accessVoxelsRawFlat(buffer, channel_name, layer_name, voxel_indices);
+				std::vector<std::shared_ptr<VoxelT>> voxels(voxels_raw.size());
+				for (size_t i = 0; i < voxels_raw.size(); ++i) {
+					voxels[i] = std::shared_ptr<VoxelT>((VoxelT*)voxels_raw[i]);
+				}
+				return voxels;
 			};
 
 			virtual SerializationData* generateSerializationBuffer() const = 0;
@@ -321,6 +341,9 @@ namespace RadFiled3D {
 				std::map<std::string, AccessorTypes::ChannelStructure> channels_layers_offsets;
 			public:
 				virtual IVoxel* accessVoxelRawFlat(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, size_t voxel_idx) const override;
+				virtual std::vector<IVoxel*> accessVoxelsRawFlat(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const std::vector<size_t>& voxel_indices) const override;
+
+				IVoxel* createVoxelFromBuffer(char* buffer, Typing::DType dtype, const char* voxel_header_data = nullptr) const;
 			};
 
 

@@ -21,12 +21,14 @@
 #include <string>
 #include <tuple>
 #include <iostream>
+#include <RadFiled3D/dataset/helpers.hpp>
 
 
 namespace py = pybind11;
 using namespace pybind11::detail;
 using namespace RadFiled3D;
 using namespace RadFiled3D::Storage;
+using namespace RadFiled3D::Dataset;
 
 struct NonDeletingDeleter {
     void operator()(void*) const {
@@ -180,6 +182,15 @@ py::array create_py_array_generic(const T* data, const glm::uvec3& shape, size_t
             }
         })
     ));
+}
+
+template<typename T>
+py::array create_py_array_generic(const T* data, size_t len, size_t elements) {
+    return static_cast<py::array>(py::array_t<T>(
+		{ len },  // shape
+		{ elements * sizeof(T) },  // strides
+		data
+	));
 }
 
 template<typename T>
@@ -1942,7 +1953,45 @@ PYBIND11_MODULE(RadFiled3D, m) {
 				}
 
 			    return std::dynamic_pointer_cast<PolarFieldAccessor>(accessor)->accessLayer(stream, channel_name, layer_name);
-            });
+			}, py::arg("bytes"), py::arg("channel_name"), py::arg("layer_name"));
+
+
+        // Datasets helper bindings
+        py::class_<VoxelCollectionRequest>(m, "VoxelCollectionRequest")
+            .def(py::init<const std::string&, const std::vector<size_t>&>(), py::arg("file_path"), py::arg("voxel_indices"))
+            .def_readonly("file_path", &VoxelCollectionRequest::filePath)
+            .def_readonly("voxel_indices", &VoxelCollectionRequest::voxelIndices);
+
+        py::class_<VoxelCollection, std::shared_ptr<VoxelCollection>>(m, "VoxelCollection")
+            .def("get_as_ndarray", [](std::shared_ptr<VoxelCollection>& self, const std::string& channel, const std::string& layer) {
+                const Typing::DType type = Typing::Helper::get_dtype(self->channels.begin()->second.layers.begin()->second.voxels[0]->get_type());
+                char* data_buffer = self->extract_data_buffer_from(channel, layer);
+                size_t voxel_count = self->channels.begin()->second.layers.begin()->second.voxels.size();
+
+                switch (type) {
+                    case Typing::DType::Float:
+                        return create_py_array_generic<float>((float*)data_buffer, voxel_count, 1);
+                    case Typing::DType::Double:
+                        return create_py_array_generic<double>((double*)data_buffer, voxel_count, 1);
+                    case Typing::DType::Int:
+                        return create_py_array_generic<int>((int*)data_buffer, voxel_count, 1);
+                    case Typing::DType::Char:
+                        return create_py_array_generic<char>(data_buffer, voxel_count, 1);
+                    case Typing::DType::UInt64:
+                        return create_py_array_generic<uint64_t>((uint64_t*)data_buffer, voxel_count, 1);
+                    case Typing::DType::UInt32:
+                        return create_py_array_generic<unsigned long>((unsigned long*)data_buffer, voxel_count, 1);
+                }
+
+                const size_t element_size = self->channels.begin()->second.layers.begin()->second.voxels[0]->get_bytes();
+
+                return create_py_array_generic<float>((float*)data_buffer, voxel_count, element_size / sizeof(float));
+            }, py::return_value_policy::take_ownership);
+
+        py::class_<VoxelCollectionAccessor>(m, "VoxelCollectionAccessor")
+            .def(py::init<std::shared_ptr<Storage::FieldAccessor>, const std::vector<std::string>&, const std::vector<std::string>&>(), py::arg("accessor"), py::arg("channels"), py::arg("layers"))
+            .def("load_voxels", &VoxelCollectionAccessor::loadVoxels, py::arg("requests"));
+
 
         py::class_<GridTracer, std::shared_ptr<GridTracer>>(m, "GridTracer")
             .def("trace", &GridTracer::trace, py::arg("p1"), py::arg("p2"));

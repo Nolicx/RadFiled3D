@@ -19,8 +19,8 @@ class RadField3DDataset(CartesianFieldDataset):
     The shape of the ground truth tensors is (c, x, y, z) c is the number of channels (typically 32 for spectra and 1 for all other layers), and (x, y, z) are the dimensions of the radiation field.
     The shape of the input tensor is (3,) for the tube direction and (n,) for the tube spectrum, where n is the number of bins in the tube spectrum.
     """
-    def __init__(self, file_paths: list[str] = None, zip_file: str = None, metadata_load_mode: MetadataLoadMode = MetadataLoadMode.HEADER):
-        super().__init__(file_paths=file_paths, zip_file=zip_file, metadata_load_mode=metadata_load_mode)
+    def __init__(self, file_paths: list[str] = None, zip_file: str = None):
+        super().__init__(file_paths=file_paths, zip_file=zip_file, metadata_load_mode=MetadataLoadMode.FULL)
 
     def __getitem__(self, idx: int) -> TrainingInputData:
         field, metadata = super().__getitem__(idx)
@@ -80,8 +80,8 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
     The shape of the input tensor is (3,) for the voxel position in normalized world space [0..1] as well as the tube direction and (n,) for the tube spectrum, where n is the number of bins in the tube spectrum.
     """
 
-    def __init__(self, file_paths: list[str] = None, zip_file: str = None, metadata_load_mode: MetadataLoadMode = MetadataLoadMode.HEADER):
-        super().__init__(file_paths=file_paths, zip_file=zip_file, metadata_load_mode=metadata_load_mode)
+    def __init__(self, file_paths: list[str] = None, zip_file: str = None):
+        super().__init__(file_paths=file_paths, zip_file=zip_file)
         field = self._get_field(0)
         self.field_voxel_counts = field.get_voxel_counts()
         self.voxels_per_field = self.field_voxel_counts.x * self.field_voxel_counts.y * self.field_voxel_counts.z

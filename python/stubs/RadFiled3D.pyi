@@ -1269,3 +1269,50 @@ class GridTracerFactory:
         :return: The grid tracer.
         """
         ...
+
+
+class VoxelCollectionRequest(object):
+    file_path: str
+    voxel_indices: list[int]
+
+    def __init__(self, file_path: str, voxel_indices: list[int]) -> None:
+        """
+        Initialize a voxel collection request.
+
+        :param file_path: The file path to the stored radiation field.
+        :param voxel_indices: The indices of the voxels to collect.
+        """
+        ...
+
+
+class VoxelCollection(object):
+    def get_as_ndarray(self, channel: str, layer: str) -> np.ndarray:
+        """
+        Get the collected voxels as a numpy ndarray.
+
+        :param channel: The name of the channel.
+        :param layer: The name of the layer.
+        :return: The collected voxels as a numpy ndarray.
+        """
+        ...
+
+
+class VoxelCollectionAccessor(object):
+    def __init__(self, accessor: FieldAccessor, channels: list[str], layers: list[str]) -> None:
+        """
+        Initialize a voxel collection accessor.
+
+        :param accessor: The field accessor to use for accessing the radiation field.
+        :param channels: The names of the channels to collect.
+        :param layers: The names of the layers to collect.
+        """
+        ...
+
+    def load_voxels(self, requests: list[VoxelCollectionRequest]) -> VoxelCollection:
+        """
+        Load the voxels from the radiation field based on the requests.
+
+        :param requests: The requests for voxel collections.
+        :return: The collected voxels as a VoxelCollection.
+        """
+        ...

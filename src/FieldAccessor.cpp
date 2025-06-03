@@ -245,30 +245,10 @@ void RadFiled3D::Storage::V1::FileParser::initialize(std::istream& buffer)
 	}
 }
 
-IVoxel* RadFiled3D::Storage::V1::FileParser::accessVoxelRawFlat(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, size_t voxel_idx) const
+IVoxel* RadFiled3D::Storage::V1::FileParser::createVoxelFromBuffer(char* data_buffer, Typing::DType dtype, const char* voxel_header_data) const
 {
-	auto channel_block_itr = this->channels_layers_offsets.find(channel_name);
-	if (channel_block_itr == this->channels_layers_offsets.end())
-		throw RadiationFieldStoreException("Channel not found");
-
-	auto layer_block_itr = channel_block_itr->second.layers.find(layer_name);
-	if (layer_block_itr == channel_block_itr->second.layers.end())
-		throw RadiationFieldStoreException("Layer not found");
-
-	auto& channel_block = channel_block_itr->second.channel_block;
-	auto& layer_block = layer_block_itr->second;
-
-	const size_t element_size = Typing::Helper::get_bytes_of_dtype(layer_block.dtype);
-
-	if (voxel_idx >= this->voxel_count)
-		throw RadiationFieldStoreException("Voxel index out of bounds");
-
-	buffer.seekg(this->getFieldDataOffset() + channel_block.offset + layer_block.offset + sizeof(FiledTypes::V1::VoxelGridLayerHeader) + sizeof(FiledTypes::V1::ChannelHeader) + voxel_idx * layer_block.elements_per_voxel * element_size, std::ios::beg);
-	char* data_buffer = new char[layer_block.elements_per_voxel * element_size];
-	buffer.read(data_buffer, layer_block.elements_per_voxel * element_size);
-
 	IVoxel* voxel = nullptr;
-	switch (layer_block.dtype) {
+	switch (dtype) {
 	case Typing::DType::Float:
 		voxel = new OwningScalarVoxel<float>((float*)data_buffer);
 		break;
@@ -308,20 +288,77 @@ IVoxel* RadFiled3D::Storage::V1::FileParser::accessVoxelRawFlat(std::istream& bu
 		break;
 	}
 
-	if (voxel == nullptr && layer_block.dtype == Typing::DType::Hist) {
+	if (voxel == nullptr && dtype == Typing::DType::Hist) {
 		OwningHistogramVoxel* vx = new OwningHistogramVoxel();
-		if (layer_block.get_voxel_header_data() != nullptr) {
-			vx->init_from_header(layer_block.get_voxel_header_data());
+		if (voxel_header_data != nullptr) {
+			vx->init_from_header(voxel_header_data);
 		}
 		vx->set_data(data_buffer);
 		voxel = vx;
 	}
 
-	delete[] data_buffer;
-
 	if (voxel == nullptr)
 		throw RadiationFieldStoreException("Unsupported data type");
 	return voxel;
+}
+
+IVoxel* RadFiled3D::Storage::V1::FileParser::accessVoxelRawFlat(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, size_t voxel_idx) const
+{
+	auto channel_block_itr = this->channels_layers_offsets.find(channel_name);
+	if (channel_block_itr == this->channels_layers_offsets.end())
+		throw RadiationFieldStoreException("Channel not found");
+
+	auto layer_block_itr = channel_block_itr->second.layers.find(layer_name);
+	if (layer_block_itr == channel_block_itr->second.layers.end())
+		throw RadiationFieldStoreException("Layer not found");
+
+	auto& channel_block = channel_block_itr->second.channel_block;
+	auto& layer_block = layer_block_itr->second;
+
+	const size_t element_size = Typing::Helper::get_bytes_of_dtype(layer_block.dtype);
+
+	if (voxel_idx >= this->voxel_count)
+		throw RadiationFieldStoreException("Voxel index out of bounds");
+
+	buffer.seekg(this->getFieldDataOffset() + channel_block.offset + layer_block.offset + sizeof(FiledTypes::V1::VoxelGridLayerHeader) + sizeof(FiledTypes::V1::ChannelHeader) + voxel_idx * layer_block.elements_per_voxel * element_size, std::ios::beg);
+	char* data_buffer = new char[layer_block.elements_per_voxel * element_size];
+	buffer.read(data_buffer, layer_block.elements_per_voxel * element_size);
+
+	IVoxel* voxel = this->createVoxelFromBuffer(data_buffer, layer_block.dtype, (layer_block.get_voxel_header_data_size() > 0) ? layer_block.get_voxel_header_data() : nullptr);
+	delete[] data_buffer;
+	return voxel;
+}
+
+std::vector<IVoxel*> RadFiled3D::Storage::V1::FileParser::accessVoxelsRawFlat(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const std::vector<size_t>& voxel_indices) const
+{
+	auto voxels = std::vector<IVoxel*>(voxel_indices.size());
+
+	auto channel_block_itr = this->channels_layers_offsets.find(channel_name);
+	if (channel_block_itr == this->channels_layers_offsets.end())
+		throw RadiationFieldStoreException("Channel not found");
+
+	auto layer_block_itr = channel_block_itr->second.layers.find(layer_name);
+	if (layer_block_itr == channel_block_itr->second.layers.end())
+		throw RadiationFieldStoreException("Layer not found");
+
+	auto& channel_block = channel_block_itr->second.channel_block;
+	auto& layer_block = layer_block_itr->second;
+
+	const size_t element_size = Typing::Helper::get_bytes_of_dtype(layer_block.dtype);
+
+	size_t vx_parsed = 0;
+	for (size_t voxel_idx : voxel_indices) {
+		if (voxel_idx >= this->voxel_count)
+			throw RadiationFieldStoreException("Voxel index out of bounds");
+
+		buffer.seekg(this->getFieldDataOffset() + channel_block.offset + layer_block.offset + sizeof(FiledTypes::V1::VoxelGridLayerHeader) + sizeof(FiledTypes::V1::ChannelHeader) + voxel_idx * layer_block.elements_per_voxel * element_size, std::ios::beg);
+		char* data_buffer = new char[layer_block.elements_per_voxel * element_size];
+		buffer.read(data_buffer, layer_block.elements_per_voxel * element_size);
+		voxels[vx_parsed++] = this->createVoxelFromBuffer(data_buffer, layer_block.dtype, (layer_block.get_voxel_header_data_size() > 0) ? layer_block.get_voxel_header_data() : nullptr);
+		delete[] data_buffer;
+	}
+
+	return voxels;
 }
 
 size_t RadFiled3D::Storage::V1::CartesianFieldAccessor::getFieldDataOffset() const
