@@ -177,10 +177,68 @@ class RadiationFieldMetadata(object):
 
 class RadiationFieldMetadataV1(RadiationFieldMetadata):
     def __init__(self, simulation: RadiationFieldSimulationMetadataV1, software: RadiationFieldSoftwareMetadataV1) -> None: ...
-    def get_header(self) -> RadiationFieldMetadataHeaderV1: ...
-    def set_header(self, header: RadiationFieldMetadataHeaderV1) -> None: ...
-    def get_dynamic_metadata_keys(self) -> list[str]: ...
-    def get_dynamic_metadata(self, key: str) -> Voxel: ...
+    def get_header(self) -> RadiationFieldMetadataHeaderV1:
+        """
+        Returns the mandatory header of the metadata.
+        The header contains the simulation and software metadata.
+        
+        :return: The header of the metadata.
+        """
+        ...
+
+    def set_header(self, header: RadiationFieldMetadataHeaderV1) -> None:
+        """
+        Sets the mandatory header of the metadata.
+        The header contains the simulation and software metadata.
+        
+        :param header: The header to set.
+        """
+        ...
+
+    def get_dynamic_metadata_keys(self) -> list[str]:
+        """
+        Returns a list of all dynamic metadata keys.
+        Dynamic metadata keys are used to store additional information about the radiation field.
+        The keys are used to store additional information about the radiation field.
+        The values of the keys are Voxel objects that can be used to store any data type.
+
+        :return: A list of all dynamic metadata keys.
+        """
+        ...
+
+    def get_dynamic_metadata(self, key: str) -> Voxel:
+        """
+        Returns the dynamic metadata for a given key.
+        The key is used to store additional information about the radiation field.
+        The value of the key is a Voxel that can be used to store any data type.
+
+        :param key: The key of the metadata.
+        :return: The Voxel that can be used to store the value.
+        """
+        ...
+
+    def add_dynamic_metadata(self, key: str, dtype: DType) -> Voxel:
+        """
+        Adds a dynamic metadata key to the radiation field metadata.
+        The key is used to store additional information about the radiation field.
+        The value of the key is a Voxel that can be used to store any data type.
+
+        :param key: The key to add.
+        :param dtype: The data type of the value.
+        :return: The Voxel that can be used to store the value.
+        """
+        ...
+
+    def add_dynamic_histogram_metadata(self, key: str, bins: int, bin_width: float) -> HistogramVoxel:
+        """
+        Adds a dynamic histogram metadata to the radiation field metadata.
+
+        :param key: The key of the metadata.
+        :param bins: The number of bins in the histogram.
+        :param bin_width: The width of each bin in the histogram.
+        :return: The histogram voxel representing the dynamic metadata.
+        """
+        ...
 
 
 class Voxel(object):
@@ -1308,7 +1366,7 @@ class VoxelCollectionAccessor(object):
         """
         ...
 
-    def load_voxels(self, requests: list[VoxelCollectionRequest]) -> VoxelCollection:
+    def access(self, requests: list[VoxelCollectionRequest]) -> VoxelCollection:
         """
         Load the voxels from the radiation field based on the requests.
 

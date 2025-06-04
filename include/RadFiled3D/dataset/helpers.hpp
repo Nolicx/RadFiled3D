@@ -15,7 +15,7 @@ using namespace RadFiled3D;
 
 namespace RadFiled3D::Dataset {
 	/** A request to load a collection of voxels from a file.
-	* Use with VoxelCollectionAccessor to load a collection of voxels from a file.
+	* Use with VoxelCollectionAccessor to access a collection of voxels from a file.
 	*/
 	struct VoxelCollectionRequest {
 		const std::string filePath;
@@ -27,7 +27,7 @@ namespace RadFiled3D::Dataset {
 	};
 
 	/** A collection of voxels organized by channels and layers.
-	* Returned by VoxelCollectionAccessor::loadVoxels.
+	* Returned by VoxelCollectionAccessor::access.
 	* Provides a way to extract a dense data buffer from a specific channel and layer.
 	*/
 	struct VoxelCollection {
@@ -74,6 +74,6 @@ namespace RadFiled3D::Dataset {
 		VoxelCollectionAccessor& operator=(VoxelCollectionAccessor&&) = default;
 		virtual ~VoxelCollectionAccessor() = default;
 
-		std::shared_ptr<VoxelCollection> loadVoxels(const std::vector<VoxelCollectionRequest>& requests);
+		std::shared_ptr<VoxelCollection> access(const std::vector<VoxelCollectionRequest>& requests);
 	};
 }

@@ -8,7 +8,7 @@ using namespace RadFiled3D;
 using namespace RadFiled3D::Dataset;
 
 
-std::shared_ptr<VoxelCollection> RadFiled3D::Dataset::VoxelCollectionAccessor::loadVoxels(const std::vector<VoxelCollectionRequest>& requests)
+std::shared_ptr<VoxelCollection> RadFiled3D::Dataset::VoxelCollectionAccessor::access(const std::vector<VoxelCollectionRequest>& requests)
 {
 	size_t voxelsCount = 0;
 	for (const auto& request : requests) {
@@ -16,17 +16,26 @@ std::shared_ptr<VoxelCollection> RadFiled3D::Dataset::VoxelCollectionAccessor::l
 	}
 	std::shared_ptr<VoxelCollection> collection = std::make_shared<VoxelCollection>(this->channels, this->layers, voxelsCount);
 
+	voxelsCount = 0;
 	for (const auto& request : requests) {
 		std::ifstream buffer(request.filePath, std::ios::binary);
 		for (const std::string& channel : this->channels) {
 			for (const std::string& layer : this->layers) {
-				auto voxels = this->accessor->accessVoxelsFlat<IVoxel>(buffer, channel, layer, request.voxelIndices);
+				auto voxels = this->accessor->accessVoxelsRawFlat(buffer, channel, layer, request.voxelIndices);
 				auto& channel_data = collection->channels[channel];
 				auto& layer_data = channel_data.layers[layer];
-				layer_data.voxels.assign(voxels.begin(), voxels.end());
+				size_t inner_voxels_count = 0;
+				for (auto voxel : voxels) {
+					if (voxel == nullptr) {
+						throw std::runtime_error("Failed to access voxel data for channel: " + channel + ", layer: " + layer);
+					}
+					layer_data.voxels[voxelsCount + inner_voxels_count] = std::shared_ptr<IVoxel>(voxel);
+					inner_voxels_count++;
+				}
 				buffer.seekg(0, std::ios::beg); // Reset the buffer position for the next channel/layer
 			}
 		}
+		voxelsCount += request.voxelIndices.size();
 	}
 
 	return collection;

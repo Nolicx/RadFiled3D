@@ -15,7 +15,7 @@ using namespace RadFiled3D::Storage;
 using namespace RadFiled3D::Storage::FiledTypes;
 
 
-std::vector<char> RadFiled3D::Storage::V1::FileParser::SerializeChannelsLlayersOffsets(const std::map<std::string, AccessorTypes::ChannelStructure>& channels_layers_offsets)
+std::vector<char> RadFiled3D::Storage::V1::FileParser::SerializeChannelsLayersOffsets(const std::map<std::string, AccessorTypes::ChannelStructure>& channels_layers_offsets)
 {
 	std::vector<char> channel_layer_offsets_data;
 
@@ -93,7 +93,7 @@ std::map<std::string, AccessorTypes::ChannelStructure> RadFiled3D::Storage::V1::
 }
 
 std::vector<char> RadFiled3D::Storage::V1::CartesianFieldAccessor::SerializationData::serialize_additional_data() const {
-	return FileParser::SerializeChannelsLlayersOffsets(this->channels_layers_offsets);
+	return FileParser::SerializeChannelsLayersOffsets(this->channels_layers_offsets);
 }
 
 void RadFiled3D::Storage::V1::CartesianFieldAccessor::SerializationData::deserialize_additional_data(const std::vector<char>& data) {
@@ -186,7 +186,7 @@ void RadFiled3D::Storage::FieldAccessor::verifyBuffer(std::istream& buffer) cons
 }
 
 RadFiled3D::Storage::FieldAccessor::FieldAccessor(FieldType field_type)
-	: field_type(field_type), metadata_fileheader_size(0)
+	: field_type(field_type), metadata_fileheader_size(0), store_version(StoreVersion::V1), voxel_count(0)
 {
 }
 
@@ -320,7 +320,8 @@ IVoxel* RadFiled3D::Storage::V1::FileParser::accessVoxelRawFlat(std::istream& bu
 	if (voxel_idx >= this->voxel_count)
 		throw RadiationFieldStoreException("Voxel index out of bounds");
 
-	buffer.seekg(this->getFieldDataOffset() + channel_block.offset + layer_block.offset + sizeof(FiledTypes::V1::VoxelGridLayerHeader) + sizeof(FiledTypes::V1::ChannelHeader) + voxel_idx * layer_block.elements_per_voxel * element_size, std::ios::beg);
+	// Add layer_block.get_voxel_header_data_size() to read position as the creation of the voxel does not revist the header data
+	buffer.seekg(this->getFieldDataOffset() + channel_block.offset + layer_block.offset + layer_block.get_voxel_header_data_size() + sizeof(FiledTypes::V1::VoxelGridLayerHeader) + sizeof(FiledTypes::V1::ChannelHeader) + voxel_idx * layer_block.elements_per_voxel * element_size, std::ios::beg);
 	char* data_buffer = new char[layer_block.elements_per_voxel * element_size];
 	buffer.read(data_buffer, layer_block.elements_per_voxel * element_size);
 
@@ -351,7 +352,8 @@ std::vector<IVoxel*> RadFiled3D::Storage::V1::FileParser::accessVoxelsRawFlat(st
 		if (voxel_idx >= this->voxel_count)
 			throw RadiationFieldStoreException("Voxel index out of bounds");
 
-		buffer.seekg(this->getFieldDataOffset() + channel_block.offset + layer_block.offset + sizeof(FiledTypes::V1::VoxelGridLayerHeader) + sizeof(FiledTypes::V1::ChannelHeader) + voxel_idx * layer_block.elements_per_voxel * element_size, std::ios::beg);
+		// Add layer_block.get_voxel_header_data_size() to read position as the creation of the voxel does not revist the header data
+		buffer.seekg(this->getFieldDataOffset() + channel_block.offset + layer_block.offset + layer_block.get_voxel_header_data_size() + sizeof(FiledTypes::V1::VoxelGridLayerHeader) + sizeof(FiledTypes::V1::ChannelHeader) + voxel_idx * layer_block.elements_per_voxel * element_size, std::ios::beg);
 		char* data_buffer = new char[layer_block.elements_per_voxel * element_size];
 		buffer.read(data_buffer, layer_block.elements_per_voxel * element_size);
 		voxels[vx_parsed++] = this->createVoxelFromBuffer(data_buffer, layer_block.dtype, (layer_block.get_voxel_header_data_size() > 0) ? layer_block.get_voxel_header_data() : nullptr);

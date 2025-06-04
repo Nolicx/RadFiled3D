@@ -185,10 +185,15 @@ py::array create_py_array_generic(const T* data, const glm::uvec3& shape, size_t
 }
 
 template<typename T>
-py::array create_py_array_generic(const T* data, size_t len, size_t elements) {
-    return static_cast<py::array>(py::array_t<T>(
+py::array create_py_array_generic(const T* data, size_t len, size_t element_size = sizeof(T)) {
+    const size_t components = static_cast<size_t>(element_size / sizeof(T));
+    return (components > 1) ? static_cast<py::array>(py::array_t<T>(
+		{ len, components },  // shape
+		{ element_size, sizeof(T) },  // strides
+		data
+	)) : static_cast<py::array>(py::array_t<T>(
 		{ len },  // shape
-		{ elements * sizeof(T) },  // strides
+		{ sizeof(T) },  // strides
 		data
 	));
 }
@@ -850,8 +855,50 @@ PYBIND11_MODULE(RadFiled3D, m) {
         .def("get_dynamic_metadata", [](Storage::V1::RadiationFieldMetadata& self, const std::string& key) {
             IVoxel* voxel = self.get_dynamic_metadata().at(key);
             return VOXEL_REFERENCE(voxel);
-		}, py::return_value_policy::reference)
-        .def("get_dynamic_metadata_keys", &Storage::V1::RadiationFieldMetadata::get_dynamic_metadata_keys);
+        }, py::arg("key"), py::return_value_policy::reference)
+        .def("get_dynamic_metadata_keys", &Storage::V1::RadiationFieldMetadata::get_dynamic_metadata_keys)
+        .def("add_dynamic_histogram_metadata", [](Storage::V1::RadiationFieldMetadata& self, const std::string& key, size_t bins, float bin_width) {
+		    RadFiled3D::OwningHistogramVoxel hist(bins, bin_width);
+            self.set_dynamic_metadata<RadFiled3D::HistogramVoxel>(key, hist);
+			IVoxel* voxel = self.get_dynamic_metadata().at(key);
+            return VOXEL_REFERENCE(voxel);
+		}, py::arg("key"), py::arg("bins"), py::arg("bin_width"), py::return_value_policy::reference)
+        .def("add_dynamic_metadata", [](Storage::V1::RadiationFieldMetadata& self, const std::string& key, Typing::DType dtype) {
+            switch (dtype) {
+		    case Typing::DType::Float:
+		        self.add_dynamic_metadata<float>(key, 0.f);
+                break;
+			case Typing::DType::UInt32:
+				self.add_dynamic_metadata<uint32_t>(key, 0u);
+				break;
+            case Typing::DType::Int:
+				self.add_dynamic_metadata<int>(key, 0);
+				break;
+			case Typing::DType::UInt64:
+				self.add_dynamic_metadata<uint64_t>(key, 0ull);
+				break;
+            case Typing::DType::Char:
+				self.add_dynamic_metadata<char>(key, 0);
+                break;
+            case Typing::DType::Double:
+				self.add_dynamic_metadata<double>(key, 0.0);
+				break;
+			case Typing::DType::Vec2:
+				self.add_dynamic_metadata<glm::vec2>(key, glm::vec2(0.f, 0.f));
+                break;
+			case Typing::DType::Vec3:
+				self.add_dynamic_metadata<glm::vec3>(key, glm::vec3(0.f, 0.f, 0.f));
+                break;
+			case Typing::DType::Vec4:
+				self.add_dynamic_metadata<glm::vec4>(key, glm::vec4(0.f, 0.f, 0.f, 0.f));
+                break;
+            case Typing::DType::Hist:
+				throw py::value_error("Histograms are not supported by this method please use the explicit histogram metadata method.");
+            }
+
+            IVoxel* voxel = self.get_dynamic_metadata().at(key);
+            return VOXEL_REFERENCE(voxel);
+        }, py::arg("key"), py::arg("dtype"), py::return_value_policy::reference);
 
     // TODO: SWITCH TO USING DECLARE_SCALAR_VOXEL(...) makro
 
@@ -1125,7 +1172,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
             .def("get_voxel_counts", &VoxelGridBuffer::get_voxel_counts)
             .def("get_voxel_dimensions", &VoxelGridBuffer::get_voxel_dimensions)
 			.def("get_voxel_idx_by_coord", &VoxelGridBuffer::get_voxel_idx_by_coord)
-			.def("get_voxel_idx", &VoxelGridBuffer::get_voxel_idx)
+			.def("get_voxel_idx", &VoxelGridBuffer::get_voxel_idx, py::arg("x"), py::arg("y"), py::arg("z"))
             .def("get_voxel_flat", [](VoxelGridBuffer& self, const std::string& layer_name, size_t idx) {
                 const Typing::DType type = Typing::Helper::get_dtype(self.get_voxel_flat<IVoxel>(layer_name, 0).get_type());
                 switch (type) {
@@ -1152,7 +1199,7 @@ PYBIND11_MODULE(RadFiled3D, m) {
                     default:
                         throw std::runtime_error("Unsupported voxel type: " + std::to_string(static_cast<int>(type)));
                 }
-            }, py::return_value_policy::reference)
+            }, py::arg("layer_name"), py::arg("idx"), py::return_value_policy::reference)
             .def("get_voxel", [](VoxelGridBuffer& self, const std::string& layer_name, size_t x, size_t y, size_t z) {
                 const Typing::DType type = Typing::Helper::get_dtype(self.get_voxel_flat<IVoxel>(layer_name, 0).get_type());
                 switch (type) {
@@ -1964,33 +2011,39 @@ PYBIND11_MODULE(RadFiled3D, m) {
 
         py::class_<VoxelCollection, std::shared_ptr<VoxelCollection>>(m, "VoxelCollection")
             .def("get_as_ndarray", [](std::shared_ptr<VoxelCollection>& self, const std::string& channel, const std::string& layer) {
-                const Typing::DType type = Typing::Helper::get_dtype(self->channels.begin()->second.layers.begin()->second.voxels[0]->get_type());
+			    auto channel_it = self->channels.find(channel);
+                if (channel_it == self->channels.end())
+					throw std::runtime_error("Channel '" + channel + "' not found in VoxelCollection");
+				auto layer_it = channel_it->second.layers.find(layer);
+				if (layer_it == channel_it->second.layers.end())
+					throw std::runtime_error("Layer '" + layer + "' not found in channel '" + channel + "'");
+
+                const Typing::DType type = Typing::Helper::get_dtype(layer_it->second.voxels[0]->get_type());
                 char* data_buffer = self->extract_data_buffer_from(channel, layer);
                 size_t voxel_count = self->channels.begin()->second.layers.begin()->second.voxels.size();
 
                 switch (type) {
                     case Typing::DType::Float:
-                        return create_py_array_generic<float>((float*)data_buffer, voxel_count, 1);
+                        return create_py_array_generic<float>((float*)data_buffer, voxel_count);
                     case Typing::DType::Double:
-                        return create_py_array_generic<double>((double*)data_buffer, voxel_count, 1);
+                        return create_py_array_generic<double>((double*)data_buffer, voxel_count);
                     case Typing::DType::Int:
-                        return create_py_array_generic<int>((int*)data_buffer, voxel_count, 1);
+                        return create_py_array_generic<int>((int*)data_buffer, voxel_count);
                     case Typing::DType::Char:
-                        return create_py_array_generic<char>(data_buffer, voxel_count, 1);
+                        return create_py_array_generic<char>(data_buffer, voxel_count);
                     case Typing::DType::UInt64:
-                        return create_py_array_generic<uint64_t>((uint64_t*)data_buffer, voxel_count, 1);
+                        return create_py_array_generic<uint64_t>((uint64_t*)data_buffer, voxel_count);
                     case Typing::DType::UInt32:
-                        return create_py_array_generic<unsigned long>((unsigned long*)data_buffer, voxel_count, 1);
+                        return create_py_array_generic<unsigned long>((unsigned long*)data_buffer, voxel_count);
                 }
 
-                const size_t element_size = self->channels.begin()->second.layers.begin()->second.voxels[0]->get_bytes();
-
-                return create_py_array_generic<float>((float*)data_buffer, voxel_count, element_size / sizeof(float));
-            }, py::return_value_policy::take_ownership);
+                const size_t element_size = layer_it->second.voxels[0]->get_bytes();
+                return create_py_array_generic<float>((float*)data_buffer, voxel_count, element_size);
+            }, py::arg("channel"), py::arg("layer"), py::return_value_policy::take_ownership);
 
         py::class_<VoxelCollectionAccessor>(m, "VoxelCollectionAccessor")
             .def(py::init<std::shared_ptr<Storage::FieldAccessor>, const std::vector<std::string>&, const std::vector<std::string>&>(), py::arg("accessor"), py::arg("channels"), py::arg("layers"))
-            .def("load_voxels", &VoxelCollectionAccessor::loadVoxels, py::arg("requests"));
+            .def("access", &VoxelCollectionAccessor::access, py::arg("requests"));
 
 
         py::class_<GridTracer, std::shared_ptr<GridTracer>>(m, "GridTracer")

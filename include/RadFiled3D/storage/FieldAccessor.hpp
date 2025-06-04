@@ -324,7 +324,7 @@ namespace RadFiled3D {
 		namespace V1 {
 			class FileParser : virtual public RadFiled3D::Storage::FieldAccessor {
 			public:
-				static std::vector<char> SerializeChannelsLlayersOffsets(const std::map<std::string, AccessorTypes::ChannelStructure>& channels_layers_offsets);
+				static std::vector<char> SerializeChannelsLayersOffsets(const std::map<std::string, AccessorTypes::ChannelStructure>& channels_layers_offsets);
 				static std::map<std::string, AccessorTypes::ChannelStructure> DeserializeChannelsLayersOffsets(const std::vector<char>& data);
 
 			protected:
@@ -405,7 +405,7 @@ namespace RadFiled3D {
 					}
 
 					virtual std::vector<char> serialize_additional_data() const override {
-						return FileParser::SerializeChannelsLlayersOffsets(this->channels_layers_offsets);
+						return FileParser::SerializeChannelsLayersOffsets(this->channels_layers_offsets);
 					}
 
 					virtual void deserialize_additional_data(const std::vector<char>& data) override {

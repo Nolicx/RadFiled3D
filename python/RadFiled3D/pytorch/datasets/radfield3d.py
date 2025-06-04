@@ -1,5 +1,5 @@
 from .cartesian import CartesianFieldDataset
-from RadFiled3D.RadFiled3D import CartesianRadiationField, RadiationFieldMetadataV1, HistogramVoxel
+from RadFiled3D.RadFiled3D import CartesianRadiationField, RadiationFieldMetadataV1, HistogramVoxel, VoxelCollection, VoxelCollectionAccessor, VoxelCollectionRequest
 from .base import MetadataLoadMode
 from RadFiled3D.pytorch.types import RadiationField, TrainingInputData, DirectionalInput, RadiationFieldChannel, PositionalInput
 from RadFiled3D.pytorch.helpers import RadiationFieldHelper
@@ -171,7 +171,7 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
                 fluence=cached_fields.xray_beam.fluence[idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone(),
                 error=cached_fields.xray_beam.error[idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone()
             )
-        )
+        ) if cached_fields is not None else None
         # normalize xyz to 0 to 1
         field_voxel_counts = torch.tensor([self.field_voxel_counts.x, self.field_voxel_counts.y, self.field_voxel_counts.z], dtype=torch.float32, device=xyz.device, requires_grad=False)
         xyz = xyz / (field_voxel_counts - 1.0) # Normalize xyz to [0, 1]
@@ -180,7 +180,7 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
             position=xyz,
             direction=cached_metadata.direction[idx].clone(),
             spectrum=cached_metadata.spectrum[idx].clone()
-        )
+        ) if cached_metadata is not None else None
 
         return TrainingInputData(
             input=input,
@@ -251,15 +251,93 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
         return super().__len__() * self.voxels_per_field
 
     def __getitems__(self, indices) -> Union[TrainingInputData, list[TrainingInputData]]:
-        if self.cached_metadata is not None and self.cached_fields is not None:
-            indices = torch.tensor(indices, dtype=torch.int64, device=self.cached_fields.scatter_field.fluence.device, requires_grad=False) if not isinstance(indices, Tensor) else indices
-            file_indices = indices // self.voxels_per_field
-            voxel_indices = indices % self.voxels_per_field
-            xyz = torch.empty((len(indices), 3), dtype=torch.float32, requires_grad=False, device=indices.device)
-            xyz[:, 0] = voxel_indices % self.field_voxel_counts.x
-            xyz[:, 1] = (voxel_indices // self.field_voxel_counts.x) % self.field_voxel_counts.y
-            xyz[:, 2] = voxel_indices // (self.field_voxel_counts.x * self.field_voxel_counts.y)
+        indices = torch.tensor(
+            indices,
+            dtype=torch.int64,
+            device=self.cached_fields.scatter_field.fluence.device if self.cached_fields is not None else None,
+            requires_grad=False
+        ) if not isinstance(indices, Tensor) else indices
+        file_indices = indices // self.voxels_per_field
+        voxel_indices = indices % self.voxels_per_field
+        xyz = torch.empty((len(indices), 3), dtype=torch.float32, requires_grad=False, device=indices.device)
+        xyz[:, 0] = voxel_indices % self.field_voxel_counts.x
+        xyz[:, 1] = (voxel_indices // self.field_voxel_counts.x) % self.field_voxel_counts.y
+        xyz[:, 2] = voxel_indices // (self.field_voxel_counts.x * self.field_voxel_counts.y)
 
+        if self.cached_metadata is not None and self.cached_fields is not None:
             return self.load_voxel_training_data_from_cache(file_indices, xyz)
         else:
-            return super().__getitems__(indices)
+            accessor = VoxelCollectionAccessor(
+                self.field_accessor,
+                [
+                    "scatter_field",
+                    "xray_beam"
+                ],
+                [
+                    "spectrum",
+                    "hits",
+                    "error"
+                ]
+            )
+            field_voxel_counts = torch.tensor([self.field_voxel_counts.x, self.field_voxel_counts.y, self.field_voxel_counts.z], dtype=torch.float32, device=xyz.device, requires_grad=False)
+
+            requests = []
+            indices = torch.tensor(indices, dtype=torch.int64, device=self.cached_fields.scatter_field.fluence.device, requires_grad=False) if not isinstance(indices, Tensor) else indices
+            file_indices = indices // self.voxels_per_field
+            unique_file_indices = torch.unique(file_indices)
+            voxel_indices = indices % self.voxels_per_field
+            metadata: PositionalInput = None
+            vx_count = 0
+            for file_idx in unique_file_indices:
+                voxel_request = VoxelCollectionRequest(
+                    self.file_paths[file_idx.item()],
+                    voxel_indices=voxel_indices[file_indices == file_idx].cpu().numpy()
+                )
+                requests.append(voxel_request)
+                raw_metadata = self._get_metadata(file_idx.item())
+                metadata_header = raw_metadata.get_header()
+                abc = (
+                    metadata_header.simulation.tube.radiation_direction.x,
+                    metadata_header.simulation.tube.radiation_direction.y,
+                    metadata_header.simulation.tube.radiation_direction.z
+                )
+                tube_spectrum_data: HistogramVoxel = raw_metadata.get_dynamic_metadata("tube_spectrum")
+                tube_spectrum = torch.zeros((tube_spectrum_data.get_bins(), 2), dtype=torch.float32, device=xyz.device, requires_grad=False)
+                tube_spectrum[:, 0] = torch.arange(0, tube_spectrum_data.get_bins() * tube_spectrum_data.get_histogram_bin_width(), tube_spectrum_data.get_histogram_bin_width(), dtype=torch.float32, device=xyz.device)
+                tube_spectrum[:, 1] = torch.tensor(tube_spectrum_data.get_histogram(), dtype=torch.float32, device=xyz.device, requires_grad=False)
+                tube_spectrum = tube_spectrum[:, 1]
+                tube_spectrum = torch.where(~torch.isnan(tube_spectrum), tube_spectrum, 0.0)
+                tube_spectrum = tube_spectrum / tube_spectrum.sum()
+
+                if metadata is None:
+                    metadata: PositionalInput = PositionalInput(
+                        position=xyz / (field_voxel_counts - 1.0),  # Normalize xyz to [0, 1]
+                        direction=torch.empty((len(indices), 3), dtype=torch.float32, device=xyz.device, requires_grad=False),
+                        spectrum=torch.empty((len(indices), tube_spectrum.shape[-1]), dtype=torch.float32, device=xyz.device, requires_grad=False)
+                    )
+
+                metadata.direction[vx_count:vx_count + len(voxel_request.voxel_indices), 0] = abc[0]
+                metadata.direction[vx_count:vx_count + len(voxel_request.voxel_indices), 1] = abc[1]
+                metadata.direction[vx_count:vx_count + len(voxel_request.voxel_indices), 2] = abc[2]
+                
+                metadata.spectrum[vx_count:vx_count + len(voxel_request.voxel_indices), :] = tube_spectrum
+                
+                vx_count += len(voxel_request.voxel_indices)
+
+            collection: VoxelCollection = accessor.access(requests)
+
+            return TrainingInputData(
+                input=metadata,
+                ground_truth=RadiationField(
+                    scatter_field=RadiationFieldChannel(
+                        spectrum=torch.tensor(collection.get_as_ndarray("scatter_field", "spectrum"), device=xyz.device, requires_grad=False),
+                        fluence=torch.tensor(collection.get_as_ndarray("scatter_field", "hits"), device=xyz.device, requires_grad=False).unsqueeze(-1),
+                        error=torch.tensor(collection.get_as_ndarray("scatter_field", "error"), device=xyz.device, requires_grad=False).unsqueeze(-1)
+                    ),
+                    xray_beam=RadiationFieldChannel(
+                        spectrum=torch.tensor(collection.get_as_ndarray("xray_beam", "spectrum"), device=xyz.device, requires_grad=False),
+                        fluence=torch.tensor(collection.get_as_ndarray("xray_beam", "hits"), device=xyz.device, requires_grad=False).unsqueeze(-1),
+                        error=torch.tensor(collection.get_as_ndarray("xray_beam", "error"), device=xyz.device, requires_grad=False).unsqueeze(-1)
+                    )
+                )
+            )

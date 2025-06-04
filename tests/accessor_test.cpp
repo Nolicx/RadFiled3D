@@ -3,6 +3,7 @@
 #include <iostream>
 #include "RadFiled3D/storage/RadiationFieldStore.hpp"
 #include "RadFiled3D/storage/FieldAccessor.hpp"
+#include "RadFiled3D/dataset/helpers.hpp"
 #include <memory>
 #include <vector>
 #include <chrono>
@@ -436,7 +437,7 @@ namespace {
 		size_t vx_count = field->get_voxel_counts().x * field->get_voxel_counts().y * field->get_voxel_counts().z;
 		EXPECT_EQ(vx_count, accessor->getVoxelCount());
 
-		auto serialized = FieldAccessor::Serialize(accessor);
+		auto serialized = FieldAccessor::Serialize(accessor.get());
 
 		std::shared_ptr<V1::CartesianFieldAccessor> accessor2 = std::dynamic_pointer_cast<V1::CartesianFieldAccessor>(FieldAccessor::Deserialize(serialized));
 
@@ -459,6 +460,97 @@ namespace {
 			std::ifstream file("test01.rf3", std::ios::binary);
 			auto vx = accessor2->accessVoxelFlat<float>(file, "test_channel", "doserate", 20);
 			EXPECT_EQ(vx->get_data(), 10.f);
+		}
+	}
+
+	TEST(Datasets, MultiVoxelAccessing) {
+		std::shared_ptr<CartesianRadiationField> field = std::make_shared<CartesianRadiationField>(glm::vec3(2.5f), glm::vec3(0.05f));
+		std::shared_ptr<VoxelGridBuffer> channel = std::static_pointer_cast<VoxelGridBuffer>(field->add_channel("test_channel"));
+
+		channel->add_layer<glm::vec3>("dirs", glm::vec3(0.f), "normalized direction");
+		channel->add_layer<float>("doserate", 0.0f, "Gy/s");
+		channel->add_custom_layer<HistogramVoxel>("spectra", HistogramVoxel(26, 10.f, nullptr), .123f, "");
+
+		std::shared_ptr<RadFiled3D::Storage::V1::RadiationFieldMetadata> metadata = std::make_shared<RadFiled3D::Storage::V1::RadiationFieldMetadata>(
+			RadFiled3D::Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Simulation(
+				100,
+				"geom",
+				"FTFP_BERT",
+				RadFiled3D::Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Simulation::XRayTube(
+					glm::vec3(1.f, 0.f, 0.f),
+					glm::vec3(0.f, 0.f, 0.f),
+					100.f,
+					"XRayTube"
+				)
+			),
+			RadFiled3D::Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Software(
+				"test",
+				"1.0",
+				"repo",
+				"commit"
+			)
+		);
+
+		EXPECT_NO_THROW(FieldStore::store(field, metadata, "test01.rf3", StoreVersion::V1));
+
+		channel->get_voxel_flat<ScalarVoxel<float>>("doserate", 1) = 1.f;
+		channel->get_voxel_flat<ScalarVoxel<float>>("doserate", 2) = 2.f;
+		channel->get_voxel_flat<ScalarVoxel<float>>("doserate", 4) = 3.f;
+		channel->get_voxel_flat<ScalarVoxel<float>>("doserate", 10) = 25.f;
+		EXPECT_NO_THROW(FieldStore::store(field, metadata, "test02.rf3", StoreVersion::V1));
+
+		std::vector<Dataset::VoxelCollectionRequest> reqs;
+		reqs.push_back(Dataset::VoxelCollectionRequest("test01.rf3", { 1, 2, 3 }));
+		reqs.push_back(Dataset::VoxelCollectionRequest("test02.rf3", { 1, 2, 4, 10 }));
+
+		std::ifstream file("test01.rf3", std::ios::binary);
+		std::shared_ptr<FieldAccessor> accessor = FieldStore::construct_accessor(file);
+
+		// construct the multi voxel accesso and load voxels
+		Dataset::VoxelCollectionAccessor vx_accessor = Dataset::VoxelCollectionAccessor(accessor, { "test_channel" }, { "doserate", "spectra" });
+		std::shared_ptr<Dataset::VoxelCollection> collection = vx_accessor.access(reqs);
+
+		EXPECT_EQ(collection->channels.size(), 1);
+		EXPECT_EQ(collection->channels["test_channel"].layers.size(), 2);
+
+		EXPECT_EQ(collection->channels["test_channel"].layers["doserate"].voxels.size(), 7);
+		EXPECT_EQ(collection->channels["test_channel"].layers["spectra"].voxels.size(), 7);
+
+		// check voxels of file01
+		for (size_t i = 0; i < 3; i++) {
+			EXPECT_EQ(collection->channels["test_channel"].layers["doserate"].voxels[i]->get_bytes(), sizeof(float));
+			auto vx = std::dynamic_pointer_cast<ScalarVoxel<float>>(collection->channels["test_channel"].layers["doserate"].voxels[i]);
+			EXPECT_EQ(vx->get_data(), 0.f); // file 01 voxels 1, 2, 3 should be zero
+
+			auto hist_vx = std::dynamic_pointer_cast<HistogramVoxel>(collection->channels["test_channel"].layers["spectra"].voxels[i]);
+			EXPECT_EQ(hist_vx->get_bins(), 26);
+			for (size_t i = 0; i < 26; i++)
+				EXPECT_FLOAT_EQ(hist_vx->get_histogram()[i], .123f);
+		}
+		
+		// check voxels of file02
+		for (size_t i = 3; i < 7; i++) {
+			EXPECT_EQ(collection->channels["test_channel"].layers["doserate"].voxels[i]->get_bytes(), sizeof(float));
+			auto vx = std::dynamic_pointer_cast<ScalarVoxel<float>>(collection->channels["test_channel"].layers["doserate"].voxels[i]);
+			if (i == 3) {
+				EXPECT_FLOAT_EQ(vx->get_data(), 1.f);
+			}
+			else if (i == 4) {
+				EXPECT_FLOAT_EQ(vx->get_data(), 2.f);
+			}
+			else if (i == 5) {
+				EXPECT_FLOAT_EQ(vx->get_data(), 3.f);
+			}
+			else if (i == 6) {
+				EXPECT_FLOAT_EQ(vx->get_data(), 25.f);
+			}
+		}
+
+		char* data_buffer = collection->extract_data_buffer_from("test_channel", "spectra");
+		EXPECT_NE(data_buffer, nullptr);
+		float* spectra_buffer = (float*)data_buffer;
+		for (size_t i = 0; i < 7 * 26; i++) {
+			EXPECT_FLOAT_EQ(spectra_buffer[i], .123f);
 		}
 	}
 }
