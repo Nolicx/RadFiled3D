@@ -13,7 +13,7 @@ class BinaryDistribution(Distribution):
 
 
 def write_manifest(additional_dirs: List[str]):
-    m_path = os.path.join(os.path.dirname(__main__.__file__), "MANIFEST.in")
+    m_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "MANIFEST.in")
     if os.path.exists(m_path):
         os.remove(m_path)
 
@@ -63,13 +63,13 @@ def setup(
                 ext_modules.append((name if cmake_builder.get_build_name() is None else cmake_builder.get_build_name(), cmake_builder.get_binary_path()))
     else:
         # add all files and folders in the source of the cmake builder to the additional folders
-        additional_folders.append(os.path.dirname(__main__.__file__))
+        additional_folders.append(os.path.dirname(os.path.abspath(__file__)))
     
     if len(additional_folders) > 0:
         write_manifest(additional_folders)
 
     distclass = BinaryDistribution if len(ext_modules) > 0 else None
-    should_include_data_files = os.path.exists(os.path.join(os.path.dirname(__main__.__file__), "MANIFEST.in"))
+    should_include_data_files = os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "MANIFEST.in"))
     should_include_data_files = should_include_data_files or (len(additional_folders) > 0)
 
     packages = find_packages()
