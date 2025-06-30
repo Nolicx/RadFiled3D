@@ -4,7 +4,7 @@
 #include <glm/vec3.hpp>
 #include "RadFiled3D/helpers/Typing.hpp"
 #include <cstring>
-#include <span>
+#include "helpers/span.hpp"
 
 
 namespace RadFiled3D {
@@ -458,8 +458,8 @@ namespace RadFiled3D {
 		/** Returns a vector containing the histogram data
 		* @return A vector containing the histogram data
 		*/
-		inline std::span<float> get_histogram() const {
-			return std::span<float>(this->data, this->histogram_definition.bins);
+		inline tcb::span<float> get_histogram() const {
+			return tcb::span<float>(this->data, this->histogram_definition.bins);
 		}
 
 		/** Returns the width of each bin in the histogram
