@@ -256,3 +256,89 @@ bool LinetracingGridTracer::isInside(const glm::vec3& point) const
 			point.y >= 0 && point.y < this->gridDimensions.y &&
 			point.z >= 0 && point.z < this->gridDimensions.z;
 }
+
+std::vector<size_t> DDAGridTracer::trace(const glm::vec3& p1, const glm::vec3& p2) {
+    std::vector<size_t> voxels;
+
+    // Richtung und Länge des Strahls berechnen
+    glm::vec3 direction = p2 - p1;
+    float t_stop = glm::length(direction);
+	direction = direction / t_stop;
+	for (int i = 0; i < 3; ++i) {
+		if (direction[i] == 0.0f) {
+			direction[i] = 1e-30f; // Verhindert Division durch Null
+		}
+	}
+
+	// Wenn der Strahl eine Länge von 0 hat, gibt es keine Voxel zu treffen
+	// Diese Zeile ist auskommentiert, da sie nicht benötigt wird, da die Schleife sowieso nicht ausgeführt wird.  
+	// if (t_stop == 0.0f) {
+    //     return voxels; // Kein Strahl, wenn p1 == p2
+    // }
+
+    // Gitterinformationen
+    glm::vec3 voxel_size = this->buffer.get_voxel_dimensions();
+    glm::vec3 world_min(0.0f); // Scheit useless zu sein
+    glm::ivec3 grid_shape = glm::ivec3(this->buffer.get_voxel_counts());
+
+    // Schätzung von max_steps basierend auf der maximalen Anzahl von Voxel-Durchquerungen
+    int max_steps = glm::ceil(t_stop / (std::min({voxel_size.x, voxel_size.y, voxel_size.z}) / 2.0f)) + 2;
+
+    // Startvoxel berechnen
+    glm::ivec3 start_voxel = glm::floor((p1 - world_min) / voxel_size);
+    glm::ivec3 end_voxel = glm::floor((p2 - world_min) / voxel_size);
+
+    // DDA-Setup
+    glm::ivec3 steps = glm::sign(direction);
+    glm::vec3 t_delta = glm::abs(voxel_size / direction);
+    glm::vec3 next_voxel_boundary = ((glm::vec3(start_voxel) + glm::vec3(steps.x > 0, steps.y > 0, steps.z > 0)) * voxel_size) + world_min;
+    glm::vec3 t_max = (next_voxel_boundary - p1) / direction;
+
+	glm::ivec3 current_voxel = start_voxel;
+    int step_count = 0;
+	size_t max_idx = this->buffer.get_voxel_count() - 1;
+    while (true) {
+        // Prüfen, ob der aktuelle Voxel innerhalb des Gitters liegt
+        if (current_voxel.x < 0 || current_voxel.x >= grid_shape.x
+            || current_voxel.y < 0 || current_voxel.y >= grid_shape.y 
+            || current_voxel.z < 0 || current_voxel.z >= grid_shape.z
+			|| step_count > max_steps) {
+            break;
+        }
+
+        // Voxel-Index mit buffer-Methode berechnen
+        size_t voxel_idx = this->buffer.get_voxel_idx_by_coord(
+            static_cast<float>(current_voxel.x) * voxel_size.x + world_min.x,
+            static_cast<float>(current_voxel.y) * voxel_size.y + world_min.y,
+            static_cast<float>(current_voxel.z) * voxel_size.z + world_min.z
+        );
+
+        if (voxel_idx <= max_idx) {
+			voxels.push_back(voxel_idx);
+        }
+		step_count++;
+
+        // Nächsten Schritt vorbereiten
+        int axis = 0;
+        if (t_max.y < t_max.x && t_max.y < t_max.z) {
+            axis = 1;
+        } else if (t_max.z < t_max.x && t_max.z < t_max.y) {
+            axis = 2;
+        }
+
+        float current_t = t_max[axis];
+        if (current_t > t_stop
+			|| (current_voxel.x == end_voxel.x
+				&& current_voxel.y == end_voxel.y
+				&& current_voxel.z == end_voxel.z)
+			) {
+            break;
+        }
+
+        t_max[axis] += t_delta[axis];
+        current_voxel[axis] += steps[axis];
+        
+    }
+
+    return voxels;
+}

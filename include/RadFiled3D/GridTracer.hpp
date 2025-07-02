@@ -8,7 +8,8 @@ namespace RadFiled3D {
 	enum class GridTracerAlgorithm {
 		SAMPLING = 0,
 		BRESENHAM = 1,
-		LINETRACING = 2
+		LINETRACING = 2,
+		DDA = 3
 	};
 
 	class GridTracer {
@@ -86,4 +87,14 @@ namespace RadFiled3D {
 		*/
 		bool isInside(const glm::vec3& point) const;
 	};
+
+	/** DDA Algorithm
+		*/
+	class DDAGridTracer : public GridTracer {
+	public:
+		DDAGridTracer(VoxelGridBuffer& buffer) : GridTracer(buffer) {}
+
+		virtual std::vector<size_t> trace(const glm::vec3& p1, const glm::vec3& p2) override;
+	};
+
 }
