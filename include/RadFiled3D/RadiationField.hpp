@@ -114,6 +114,15 @@ namespace RadFiled3D
 			}
 			return channels;
 		}
+
+		bool remove_channel(const std::string& channel_name){
+			auto it = this->channels.find(channel_name);
+			if (it == this->channels.end()) {
+				return false;
+			}
+			this->channels.erase(it); // shared_ptr freigeben -> VoxelBuffer dtor -> free_buffers
+			return true;
+		}
 	};
 
 	/** A Cartesian radiation field.

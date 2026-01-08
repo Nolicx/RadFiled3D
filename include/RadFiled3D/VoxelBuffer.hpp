@@ -456,5 +456,15 @@ namespace RadFiled3D {
 		VoxelBuffer& operator -=(const float& scalar);
 		VoxelBuffer& operator *=(const float& scalar);
 		VoxelBuffer& operator /=(const float& scalar);
+
+		bool remove_layer(const std::string& layer_name){
+			auto it = this->layers.find(layer_name);
+			if (it == this->layers.end()) {
+				return false;
+			}
+			it->second.free_buffers();
+			this->layers.erase(it);
+			return true;
+		}
 	};
 };
