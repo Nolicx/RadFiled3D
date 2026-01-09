@@ -5,6 +5,11 @@
 
 namespace RadFiled3D {
 
+	struct VoxelHit {
+		size_t index;
+		float length; // meters
+	};
+
 	enum class GridTracerAlgorithm {
 		SAMPLING = 0,
 		BRESENHAM = 1,
@@ -24,6 +29,13 @@ namespace RadFiled3D {
 
 		virtual std::vector<size_t> trace(const glm::vec3& p1, const glm::vec3& p2) = 0;
 	};
+
+	class IGridTracerWithLengths {
+	public:
+		virtual ~IGridTracerWithLengths() = default;
+		virtual std::vector<VoxelHit> trace_with_lengths(const glm::vec3& p1, const glm::vec3& p2) = 0;
+	};
+
 
 	/** Traces a line between two points in the grid using a sampling approach.
 		In this approach the minimum sampling size is the length of the line segment.
@@ -90,11 +102,12 @@ namespace RadFiled3D {
 
 	/** DDA Algorithm
 		*/
-	class DDAGridTracer : public GridTracer {
+	class DDAGridTracer : public GridTracer, public IGridTracerWithLengths {
 	public:
 		DDAGridTracer(VoxelGridBuffer& buffer) : GridTracer(buffer) {}
 
-		virtual std::vector<size_t> trace(const glm::vec3& p1, const glm::vec3& p2) override;
+		std::vector<size_t> trace(const glm::vec3& p1, const glm::vec3& p2) override;
+    	std::vector<VoxelHit> trace_with_lengths(const glm::vec3& p1, const glm::vec3& p2) override;
 	};
-
+	
 }
