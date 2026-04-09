@@ -47,6 +47,10 @@ void Storage::V1::BinayFieldBlockHandler::serializeField(std::shared_ptr<IRadiat
 		ch.channel_bytes = serialized_field->str().length();
 		buffer.write((const char*)&ch, sizeof(FiledTypes::V1::ChannelHeader));
 		buffer.write(serialized_field->str().c_str(), ch.channel_bytes);
+		// const std::string channel_blob = serialized_field->str();
+		// ch.channel_bytes = channel_blob.size();
+		// buffer.write((const char*)&ch, sizeof(ch));
+		// buffer.write(channel_blob.data(), ch.channel_bytes);
 	}
 }
 
