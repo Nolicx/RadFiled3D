@@ -1,12 +1,19 @@
 #pragma once
 #include <typeinfo>
 #include <string>
+#include <cstdint>
 #ifndef _WIN32 
 	#include <cxxabi.h>
 #endif
 
 namespace RadFiled3D {
 	namespace Typing {
+		enum class FieldShape : uint8_t {
+			Cone = 0,
+			Rectangle = 1,
+			Ellipsis = 2
+		};
+
 		enum class DType {
 			Float,
 			Double,
@@ -16,8 +23,10 @@ namespace RadFiled3D {
 			Vec3,
 			Vec4,
 			Hist,
+			AngularResolved,
 			UInt64,
-			UInt32
+			UInt32,
+			Byte
 		};
 
 		class Helper {

@@ -3,6 +3,8 @@
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 #include <stdexcept>
+#include <algorithm>
+#include <cstdint>
 
 using namespace RadFiled3D;
 
@@ -20,6 +22,12 @@ Typing::DType Typing::Helper::get_dtype(const std::string& dtype)
 	}
 	if (dtype == Typing::Helper::get_plain_type_name<char>()) {
 		return Typing::DType::Char;
+	}
+	if (dtype == Typing::Helper::get_plain_type_name<uint8_t>()) {
+		return Typing::DType::Byte;
+	}
+	if (dtype == Typing::Helper::get_plain_type_name<unsigned char>()) {
+		return Typing::DType::Byte;
 	}
 	if (dtype == Typing::Helper::get_plain_type_name<uint64_t>()) {
 		return Typing::DType::UInt64;
@@ -45,21 +53,35 @@ Typing::DType Typing::Helper::get_dtype(const std::string& dtype)
 	if (dtype == std::string("histogram")) {
 		return Typing::DType::Hist;
 	}
+	if (dtype == std::string("spherical")) {
+		return Typing::DType::AngularResolved;
+	}
 
-	const std::string vec_prefix = "glm::vec<";
+	std::string vec_prefix = "glm::vec<";
+	const std::string struct_prefix = "struct ";
+	const std::string class_prefix = "class ";
+	if (dtype.compare(0, struct_prefix.size(), struct_prefix) == 0) {
+		vec_prefix = struct_prefix + vec_prefix;
+	} else {
+		if (dtype.compare(0, class_prefix.size(), class_prefix) == 0) {
+			vec_prefix = class_prefix + vec_prefix;
+		}
+	}
 
 	if (dtype.compare(0, vec_prefix.size(), vec_prefix) == 0) {
 		// check for vector type, if the file was created by a different compiler
-		const std::string vec3_prefix = "glm::vec<3, float";
-		const std::string vec2_prefix = "glm::vec<2, float";
-		const std::string vec4_prefix = "glm::vec<4, float";
-		if (dtype.compare(0, vec3_prefix.size(), vec3_prefix) == 0) {
+		std::string shrunk_dtype = dtype.substr(vec_prefix.size());
+		shrunk_dtype.erase(std::remove(shrunk_dtype.begin(), shrunk_dtype.end(), ' '), shrunk_dtype.end());
+		const std::string vec2_prefix = "2,float";
+		const std::string vec3_prefix = "3,float";
+		const std::string vec4_prefix = "4,float";
+		if (shrunk_dtype.compare(0, vec3_prefix.size(), vec3_prefix) == 0) {
 			return Typing::DType::Vec3;
 		}
-		if (dtype.compare(0, vec2_prefix.size(), vec2_prefix) == 0) {
+		if (shrunk_dtype.compare(0, vec2_prefix.size(), vec2_prefix) == 0) {
 			return Typing::DType::Vec2;
 		}
-		if (dtype.compare(0, vec4_prefix.size(), vec4_prefix) == 0) {
+		if (shrunk_dtype.compare(0, vec4_prefix.size(), vec4_prefix) == 0) {
 			return Typing::DType::Vec4;
 		}
 	}
@@ -88,7 +110,11 @@ size_t RadFiled3D::Typing::Helper::get_bytes_of_dtype(Typing::DType dtype)
 		return sizeof(glm::vec2);
 	case Typing::DType::Vec4:
 		return sizeof(glm::vec4);
+	case Typing::DType::Byte:
+		return sizeof(uint8_t);
 	case Typing::DType::Hist:
+		return sizeof(float);
+	case Typing::DType::AngularResolved:
 		return sizeof(float);
 	default:
 		throw std::runtime_error("Unknown data type");

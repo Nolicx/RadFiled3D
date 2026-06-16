@@ -1,4 +1,5 @@
-from RadFiled3D.RadFiled3D import FieldStore, RadiationField as RawRadiationField, PolarRadiationField, CartesianRadiationField, RadiationFieldMetadata, VoxelGrid, PolarSegments, FieldAccessor, CartesianFieldAccessor, PolarFieldAccessor, Voxel
+from RadFiled3D.RadFiled3D import StoreVersion, RadiationField as RawRadiationField, PolarRadiationField, CartesianRadiationField, RadiationFieldMetadata, VoxelGrid, PolarSegments, FieldAccessor, CartesianFieldAccessor, PolarFieldAccessor, Voxel
+from RadFiled3D.utils import FieldStore
 import zipfile
 from enum import Enum
 from torch import Tensor
@@ -7,7 +8,6 @@ from typing import Union
 from pathlib import Path
 from rich.progress import Progress, TimeElapsedColumn, TimeRemainingColumn, BarColumn, TextColumn, TaskProgressColumn, SpinnerColumn, MofNCompleteColumn
 from rich import print
-from torch.multiprocessing import Manager
 from RadFiled3D.pytorch.types import TrainingInputData, RadiationField, RadiationFieldChannel, DirectionalInput, PositionalInput
 from typing import Any
 
@@ -41,9 +41,8 @@ class RadiationFieldDataset(Dataset):
         if file_paths is not None:
             file_paths = [str(p) for p in file_paths]
 
-        manager = Manager()
         self.file_paths = file_paths
-        
+
         self.zip_file = zip_file
         self.metadata_load_mode = metadata_load_mode
         if self.file_paths is None and self.zip_file is not None:
@@ -51,9 +50,31 @@ class RadiationFieldDataset(Dataset):
                 self.file_paths = [f for f in zip_ref.namelist() if f.endswith(".rf3")]
         elif self.file_paths is None and self.zip_file is None:
             raise ValueError("Either file_paths or zip_file must be provided.")
-        
+
         self._field_accessor: FieldAccessor = None
-        self.file_paths = manager.list(file_paths) if file_paths is not None else None
+        self._store_version = None
+        self._buffer_cache: Union[tuple[str, bytes], None] = None
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state["_field_accessor"] = None
+        state["_buffer_cache"] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+    @property
+    def store_version(self) -> StoreVersion:
+        if self._store_version is None:
+            self._store_version = self._get_store_version()
+        return self._store_version
+
+    def _get_store_version(self) -> StoreVersion:
+        if self.is_dataset_zipped:
+            return FieldAccessor.get_store_version(self.load_file_buffer(0))
+        else:
+            return FieldStore.get_store_version(self.file_paths[0])
 
     def _get_field_accessor(self) -> Union[FieldAccessor, CartesianFieldAccessor, PolarFieldAccessor]:
         if self._field_accessor is None:
@@ -79,11 +100,17 @@ class RadiationFieldDataset(Dataset):
         
     def load_file_buffer_by_path(self, file_path: str) -> bytes:
         if self.zip_file is not None:
+            cached = self._buffer_cache
+            if cached is not None and cached[0] == file_path:
+                return cached[1]
             with zipfile.ZipFile(self.zip_file, 'r') as zip_ref:
                 with zip_ref.open(file_path) as file:
-                    return file.read()
+                    buffer = file.read()
+            self._buffer_cache = (file_path, buffer)
+            return buffer
         else:
-            return open(file_path, 'rb').read()
+            with open(file_path, 'rb') as f:
+                return f.read()
     
     def _get_field(self, idx: int) -> Union[RawRadiationField, CartesianRadiationField, PolarRadiationField]:
         """
@@ -153,14 +180,14 @@ class RadiationFieldDataset(Dataset):
         if self.is_dataset_zipped:
             file_buffer = self.load_file_buffer_by_path(file_path)
             if self.metadata_load_mode == MetadataLoadMode.FULL:
-                metadata: RadiationFieldMetadata = FieldStore.peek_metadata_from_buffer(file_buffer)
+                metadata: RadiationFieldMetadata = FieldStore.load_metadata_from_buffer_v1(file_buffer) if self.store_version == StoreVersion.V1 else FieldStore.load_metadata_from_buffer(file_buffer)
             elif self.metadata_load_mode == MetadataLoadMode.HEADER:
                 metadata: RadiationFieldMetadata = FieldStore.peek_metadata_from_buffer(file_buffer)
             else:
                 metadata = None
         else:
             if self.metadata_load_mode == MetadataLoadMode.FULL:
-                metadata: RadiationFieldMetadata = FieldStore.load_metadata(file_path)
+                metadata: RadiationFieldMetadata = FieldStore.load_metadata_v1(file_path) if self.store_version == StoreVersion.V1 else FieldStore.load_metadata(file_path)
             elif self.metadata_load_mode == MetadataLoadMode.HEADER:
                 metadata: RadiationFieldMetadata = FieldStore.peek_metadata(file_path)
             else:
@@ -187,6 +214,7 @@ class RadiationFieldDataset(Dataset):
         :param idx: The index of the file in the dataset.
         :return: A named tuple containing the radiation field and its metadata. Format: An instance of TrainingInputData, which contains the ground truth and and input.
         """
+        idx = idx % len(self.file_paths)
         field = self._get_field(idx)
         metadata = self._get_metadata(idx)
         return (self.transform(field, idx), self.transform_origin(metadata, idx))

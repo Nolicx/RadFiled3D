@@ -4,11 +4,13 @@
 #include "RadFiled3D/storage/FieldSerializer.hpp"
 #include <stdexcept>
 #include <map>
+#include "RadFiled3D/storage/Registry.hpp"
 
 
 namespace RadFiled3D {
 	namespace Storage {
 		class FieldAccessorBuilder;
+		class BasicFieldStore;
 
 		namespace AccessorTypes {
 			typedef struct MemoryBlockDefinition {
@@ -43,7 +45,7 @@ namespace RadFiled3D {
 					: MemoryBlockDefinition(offset, size), dtype(dtype), elements_per_voxel(elements_per_voxel) {};
 
 				TypedMemoryBlockDefinition() : MemoryBlockDefinition() {
-					this->dtype = Typing::DType::Char;
+					this->dtype = Typing::DType::Byte;
 					this->elements_per_voxel = 0;
 				}
 

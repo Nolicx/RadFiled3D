@@ -7,13 +7,19 @@ from torch import Tensor
 class PolarFieldDataset(RadiationFieldDataset):
     def __init__(self, file_paths = None, zip_file = None, metadata_load_mode = MetadataLoadMode.HEADER):
         super().__init__(file_paths, zip_file, metadata_load_mode)
-        field = self._get_field(0)
-        assert isinstance(field, PolarRadiationField), "Dataset must contain PolarRadiationFields."
+        self._field_dimensions = None
 
     def _get_field_accessor(self) -> PolarFieldAccessor:
         return super()._get_field_accessor()
     
     field_accessor: PolarFieldAccessor = property(_get_field_accessor)
+
+    @property
+    def field_dimensions(self) -> vec2:
+        if self._field_dimensions is None:
+            field = self._get_field(0)
+            self._field_dimensions = field.get_segments_count()
+        return self._field_dimensions
 
     def _get_field(self, idx: int) -> PolarRadiationField:
         return super()._get_field(idx)
@@ -82,25 +88,27 @@ class PolarFieldSingleLayerDataset(PolarFieldDataset):
 class PolarSingleVoxelDataset(PolarFieldSingleLayerDataset):
     def __init__(self, file_paths = None, zip_file = None, metadata_load_mode = MetadataLoadMode.HEADER):
         super().__init__(file_paths, zip_file, metadata_load_mode)
-        field = self._get_field(0)
-        self.field_voxel_counts = field.get_voxel_counts()
-        self.voxels_per_field = self.field_voxel_counts.x * self.field_voxel_counts.y
-        self.zip_ref = None # remove zip reference to avoid pickling issues
-        self._field_accessor = None # remove field accessor to avoid pickling issues
+        self._voxel_count = None
+
+    @property
+    def voxel_count(self) -> int:
+        if self._voxel_count is None:
+            self._voxel_count = int(self.field_accessor.get_voxel_count())
+        return self._voxel_count
 
     def __len__(self) -> int:
-        vx_count = int(self.field_accessor.get_voxel_count())
-        self._field_accessor = None  # remove field accessor to avoid pickling issues
-        return super().__len__() * vx_count
-    
+        return super().__len__() * self.voxel_count
+
     def _get_field(self, idx: int) -> PolarRadiationField:
-        return super()._get_field(idx // self.field_accessor.get_voxel_count())
-    
+        return super()._get_field(idx // self.voxel_count)
+
     def _get_metadata(self, idx) -> Union[RadiationFieldMetadata, None]:
-        return super()._get_metadata(idx // self.field_accessor.get_voxel_count())
+        return super()._get_metadata(idx // self.voxel_count)
 
     def __getitem__(self, idx) -> Tuple[Tensor, Union[Tensor, None]]:
         assert self.channel_name is not None and self.layer_name is not None, "Channel and layer must be set before loading the radiation field."
-        vx_idx = idx % self.field_accessor.get_voxel_count()
-        ret_val = (self._get_voxel_flat(idx // self.field_accessor.get_voxel_count(), vx_idx, self.channel_name, self.layer_name), self._get_metadata(idx // self.field_accessor.get_voxel_count()))
+        voxel_count = self.voxel_count
+        vx_idx = idx % voxel_count
+        file_idx = idx // voxel_count
+        ret_val = (self._get_voxel_flat(file_idx, vx_idx, self.channel_name, self.layer_name), self._get_metadata(file_idx))
         return (self.transform(ret_val[0], idx), self.transform_origin(ret_val[1], idx))

@@ -22,6 +22,7 @@ The aim of this library is, to provide a simple to use API for a structured, bin
   - [Tracing paths in Cartesian Coordinate Systems](#tracing-paths-in-cartesian-coordinate-systems)
   - [Faster loading of field series](#faster-loading-of-field-series)
   - [From C++](#from-c)
+    - [Available Voxel Datatypes](#available-voxel-datatypes)
 - [Field Structure](#field-structure)
 - [Dependencies](#dependencies)
 
@@ -46,12 +47,14 @@ built automatically, but will take some time.
 In order to use the module directly from another C++ Project, you can integrate it by adding the local location of this repository via `add_submodule()` and then link against the target `libRadFiled3D`. All classes are then available from the namespace `RadFiled3D`. Check the [Example](./examples/cxx/example01.cpp) or the [First Test File](./tests/basic.cpp) as a first reference.
 
 #### Python
-In order to use the Module from Python, we provide a setup.py file that handles the compilation and integration automatically from the python setuptools.
+The Python package is built with [scikit-build-core](https://scikit-build-core.readthedocs.io/), the standard PEP 517 backend for CMake projects. It drives the CMake/pybind11 build automatically; no `setup.py` is required. CMake and Ninja are provisioned by the build backend if they are not already present.
 ##### Installing locally
 `python -m pip install .`
 
 ##### Building a wheel
 `python -m build --wheel`
+
+The package version is taken from the release tag (`GITHUB_REF` / `CI_COMMIT_TAG`) at build time and falls back to `0.0.0` for non-release builds.
 
 ## Getting Started
 Disclaimer: Not all methods support keyword arguments as they need to be defined manually in the bindings. For some methods like `add_layer` or the Metadata methods those are implemented.
@@ -59,23 +62,25 @@ Disclaimer: Not all methods support keyword arguments as they need to be defined
 ## From Python
 Simple example on how to create and store a radiation field. Find more in the example file: [Example](./examples/python/example01.py)
 ```python
-from RadFiled3D.RadFiled3D import CartesianRadiationField, FieldStore, StoreVersion, DType
+from RadFiled3D.RadFiled3D import vec3, CartesianRadiationField, DType
+from RadFiled3D.utils import FieldStore, StoreVersion
 from RadFiled3D.metadata.v1 import Metadata
 
 
 # Creating a cartesian radiation field
 field = CartesianRadiationField(vec3(2.5, 2.5, 2.5), vec3(0.05, 0.05, 0.05))
 # defining a channel and a layer on it
-field.get_channel("channel1").add_layer("layer1", "unit1", DType.FLOAT32)
+field.add_channel("channel1").add_layer("layer1", "unit1", DType.FLOAT32)
 
 # accessing the voxels by using numpy arrays
 array = field.get_channel("channel1").get_layer_as_ndarray("layer1")
-assert array.shape == (50, 50, 50)
+assert array.shape == (50, 50, 50, 1)
+
 # modify voxels content by using numpy array as no data is copied, just referenced
 array[2:5, 2:5, 2:5] = 2.0
 
 # addressing a voxel by providing a point in space
-voxel = field.get_channel("channel1").get_voxel_by_coord("layer1", 0.1, 2.4, 5)
+voxel = field.get_channel("channel1").get_voxel_by_coord("layer1", 0.1, 2.4, 2.1)
 
 # Store changes to a file
 metadata = Metadata.default()
@@ -104,9 +109,14 @@ class MyLayerDataset(CartesianFieldSingleLayerDataset):
     def __getitem____(self, idx: int) -> TrainingInputData:
         layer, metadata = super().__getitem__(idx)
         tube_dir = metadata.get_header().simulation.tube.radiation_direction
+        tube_pos = metadata.get_header().simulation.tube.radiation_origin
         # transform the layers data to a tensor
         return TrainingInputData(
-            input=DirectionalInput(direction=torch.tensor([tube_dir.x, tube_dir.y, tube_dir.z]))
+            input=DirectionalInput(
+                direction=torch.tensor([tube_dir.x, tube_dir.y, tube_dir.z]),
+                origin=torch.tensor([tube_pos.x, tube_pos.y, tube_pos.z]),
+                spectrum=None
+            )
             ground_truth=RadiationFieldHelper.load_tensor_from_layer(layer)
         )
 
@@ -143,7 +153,8 @@ Directly iterate RadField3D datasets either by loading whole fields or iterating
 from RadField3D.pytorch.datasets.radfield3d import RadField3DDataset
 from RadField3D.pytorch.datasets.radfield3d import RadField3DVoxelwiseDataset
 # import the pyTorch compatible datatypes
-from RadField3D.pytorch import RadiationField, DataLoaderBuilder
+from RadField3D.pytorch import DataLoaderBuilder
+from RadField3D.pytorch.types import DirectionalInput, PositionalInput, TrainingInputData, RadiationField
 
 
 builder = DataLoaderBuilder(
@@ -161,9 +172,28 @@ train_dl = builder.build_train_dataloader(
 )
 
 # iterate over the dataset using fully useable pyTorch classes
-for field, metadata in train_dl:
-    pass
+for train_data in train_dl:
+    input: DirectionalInput | PositionalInput = train_data.input
+    field: RadiationField = train_data.ground_truth
 ```
+**TrainingInputData** consists of two components
+**metadata** (as ``DirectionalInput`` or ``PositionalInput``) contains the following information 
+- radiation direction (x, y, z)
+- radiation origin (x, y, z)
+- field shape (Cone, Rectangle, Ellipsis)
+- field shape parameters (opening angle, size at origin, ...)
+- x-ray tube output spectrum
+
+**field** (as ``RadiationField``) contains the following information
+- direct x-ray beam component (as ``RadiationFieldChannel``)
+    - spectrum per voxel
+    - fluence per voxel
+    - statistical error per voxel
+- scatter field component (as ``RadiationFieldChannel``)
+    - spectrum per voxel
+    - fluence per voxel
+    - statistical error per voxel
+- geometry (binary density map)
 
 ### Tracing paths in Cartesian Coordinate Systems
 In order to integrate RadFiled3D with other simulation frameworks or applications, one can either take the final results and write it voxel-wise to RadFiled3D or one can already use RadFiled3D during the particle tracking. Therefore, this library offers `GridTracers`. Each of them implements a different line-segment tracing algorithm to find consecutive voxels that are intersected.
@@ -184,8 +214,8 @@ This method takes two points as the definition of the considered line-segment an
 from RadFiled3D.RadFiled3D import vec3, GridTracerFactory, GridTracerAlgorithm, CartesianRadiationField, DType
 
 field = CartesianRadiationField(vec3(1.0, 1.0, 1.0), vec3(0.01, 0.01, 0.01))
-field.add_channel("test").add_layer("hits", "counts", DType.INT32)
-hits_counts = field.get_channel("test").get_layer_as_ndarray("hits")
+field.add_channel("test").add_layer("flux", "counts", DType.INT32)
+hits_counts = field.get_channel("test").get_layer_as_ndarray("flux")
 hits_counts = hits_counts.flatten()
 
 tracer = GridTracerFactory.construct(field, GridTracerAlgorithm.SAMPLING)
@@ -199,7 +229,9 @@ hits_counts.reshape((grid_shape.x, grid_shape.y, grid_shape.z))
 ### Faster loading of field series
 As the *RadFiled3D* format possesses a dynamic structure, the loading of a radiation field requires the discovery of channels and layers as well as calculating the binary entry points of channels, layers and voxels. When loading datasets for machine learning, the structure of the fields loaded will likely be constant for each dataset. Therefore, the binary entry points can be precalculated to access only those parts of the *RadFiled3D* files that are really needed to increase the loading speed and to reduce the needed memory. This is relealized by the **FieldAccessors** objects.
 ```python
-from RadFiled3D.RadFiled3D import CartesianFieldAccessor, FieldStore, FieldType, uvec3
+from RadFiled3D.RadFiled3D import CartesianFieldAccessor, FieldType, uvec3
+from RadFiled3D.utils import FieldStore
+from RadFiled3D.metadata.v1 import Metadata
 
 accessor: CartesianFieldAccessor = FieldStore.construct_field_accessor("a_file.rf3")
 field_type = accessor.get_field_type()
@@ -235,6 +267,26 @@ void main() {
     auto field2 = FieldStore::load("test_field.rf3");
 }
 ```
+
+### Available Voxel Datatypes
+In general, a C++ Scalar- or HistogramVoxel (and thus layers) can hold any datatype. But in order to deserialize them from a file or use them from Python, there is only a specific list implemented. The Available datatypes are:
+| C++ Type   | RadFiled3D.DType  |
+| --------   | ------------  |
+| float      | DType.FLOAT32 |
+| double     | DType.FLOAT64 |
+| int        | DType.INT32   |
+| uint8_t    | DType.BYTE  |
+| unsigned char    | DType.BYTE  |
+| char    | DType.SCHAR  |
+| uint32_t   | DType.UINT32  |
+| uint64_t   | DType.UINT64  |
+| unsigned long long | DType.UINT64  |
+| glm::vec2     | DType.VEC2 |
+| glm::vec3     | DType.VEC3 |
+| glm::vec4     | DType.VEC4 |
+| HistogramVoxel<float> | DType.HISTOGRAM |
+| AngularResolvedVoxel<float> | DType.ANGULAR |
+
 
 ## Field Structure
 RadFiled3D defines a field structure, that provides the user with the possibility to first define in which kind of space he wants to operate. Therefore one can choose between `CartesianRadiationField` and `PolarRadiationField`.

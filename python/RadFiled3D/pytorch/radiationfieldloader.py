@@ -1,5 +1,6 @@
 import zipfile
 import os
+import torch
 from torch.utils.data import random_split, DataLoader
 from typing import Type, Union, Callable
 from torch.utils.data import _utils as pt_utils
@@ -69,60 +70,86 @@ class DataLoaderBuilder(object):
 
     @staticmethod
     def collate_wrapper(batch):
-        if isinstance(batch, list):
-            return pt_utils.collate.default_collate(batch)
+        if isinstance(batch, list) and len(batch) > 0:
+            sample = batch[0]
+            if hasattr(sample, '_fields'):  # It's a named tuple
+                fields = sample._fields
+                collated_fields = {}
+                
+                for field_name in fields:
+                    # Collect all non-None values for this field across the batch
+                    field_values = [getattr(item, field_name) for item in batch if getattr(item, field_name) is not None]
+                    assert len(field_values) == len(batch) or len(field_values) == 0, f"All items in the batch must have the same fields filled. That means either {field_name} is None for all elements of the batch or not None for all."
+
+                    if len(field_values) > 0:  # Only collate if there are non-None value
+                        if hasattr(field_values[0], '_fields'):  # another named tuple
+                            collated_fields[field_name] = DataLoaderBuilder.collate_wrapper(field_values)
+                        else:
+                            try:
+                                collated_fields[field_name] = pt_utils.collate.default_collate(field_values)
+                            except Exception:
+                                raise ValueError(f"Failed to collate field '{field_name}': {field_values}")
+                    else:
+                        collated_fields[field_name] = None
+                return sample.__class__(**collated_fields)
+            else:
+                return pt_utils.collate.default_collate(batch)
         else:
             return batch
 
-    def build_dataloader(self, dataset: RadiationFieldDataset, batch_size=1, shuffle=True, worker_count: Union[int, None] = 0):
+    def build_dataloader(self, dataset: RadiationFieldDataset, batch_size=1, shuffle=True, worker_count: Union[int, None] = 0, pin_memory: Union[bool, None] = None):
         """
         Builds a DataLoader for the dataset.
         :param dataset: The dataset to build the DataLoader for.
         :param batch_size: The batch size. Default is 1.
         :param shuffle: Whether to shuffle the dataset. Default is True.
         :param worker_count: The number of workers for multiprocessing. Default is 0. If None or < 0, the number of workers is set to the number of CPUs minus 1.
+        :param pin_memory: Whether to use pinned memory. Default is None, which enables it only when a CUDA device is available.
         """
         is_multiprocessing = worker_count is None or worker_count != 0
         if worker_count is None or worker_count < 0:
             worker_count = max(1, os.cpu_count() - 1)
+        if pin_memory is None:
+            pin_memory = torch.cuda.is_available()
 
-        
-        
         dl = DataLoader(
             dataset,
             batch_size=batch_size,
             shuffle=shuffle,
             num_workers=worker_count,
-            pin_memory=is_multiprocessing,
+            pin_memory=pin_memory,
             persistent_workers=is_multiprocessing,
-            collate_fn=DataLoaderBuilder.collate_wrapper
+            collate_fn=DataLoaderBuilder.collate_wrapper,
+            prefetch_factor=2 if is_multiprocessing else None
         )
-        dl.dataset._field_accessor = None
         return dl
 
-    def build_train_dataloader(self, batch_size=1, shuffle=True, worker_count: Union[int, None] = 0):
+    def build_train_dataloader(self, batch_size=1, shuffle=True, worker_count: Union[int, None] = 0, pin_memory: Union[bool, None] = None):
         """
         Builds a DataLoader for the training dataset.
         :param batch_size: The batch size. Default is 1.
         :param shuffle: Whether to shuffle the dataset. Default is True.
         :param worker_count: The number of workers for multiprocessing. Default is 0. If None or < 0, the number of workers is set to the number of CPUs minus 1.
+        :param pin_memory: Whether to use pinned memory. Default is None, which enables it only when a CUDA device is available.
         """
-        return self.build_dataloader(self.build_train_dataset(), batch_size=batch_size, shuffle=shuffle, worker_count=worker_count)
-    
-    def build_val_dataloader(self, batch_size=1, shuffle=False, worker_count: Union[int, None] = 0):
+        return self.build_dataloader(self.build_train_dataset(), batch_size=batch_size, shuffle=shuffle, worker_count=worker_count, pin_memory=pin_memory)
+
+    def build_val_dataloader(self, batch_size=1, shuffle=False, worker_count: Union[int, None] = 0, pin_memory: Union[bool, None] = None):
         """
         Builds a DataLoader for the validation dataset.
         :param batch_size: The batch size. Default is 1.
         :param shuffle: Whether to shuffle the dataset. Default is True.
         :param worker_count: The number of workers for multiprocessing. Default is 0. If None or < 0, the number of workers is set to the number of CPUs minus 1.
+        :param pin_memory: Whether to use pinned memory. Default is None, which enables it only when a CUDA device is available.
         """
-        return self.build_dataloader(self.build_val_dataset(), batch_size=batch_size, shuffle=shuffle, worker_count=worker_count)
-    
-    def build_test_dataloader(self, batch_size=1, shuffle=False, worker_count: Union[int, None] = 0):
+        return self.build_dataloader(self.build_val_dataset(), batch_size=batch_size, shuffle=shuffle, worker_count=worker_count, pin_memory=pin_memory)
+
+    def build_test_dataloader(self, batch_size=1, shuffle=False, worker_count: Union[int, None] = 0, pin_memory: Union[bool, None] = None):
         """
         Builds a DataLoader for the test dataset.
         :param batch_size: The batch size. Default is 1.
         :param shuffle: Whether to shuffle the dataset. Default is True.
         :param worker_count: The number of workers for multiprocessing. Default is 0. If None or < 0, the number of workers is set to the number of CPUs minus 1.
+        :param pin_memory: Whether to use pinned memory. Default is None, which enables it only when a CUDA device is available.
         """
-        return self.build_dataloader(self.build_test_dataset(), batch_size=batch_size, shuffle=shuffle, worker_count=worker_count)
+        return self.build_dataloader(self.build_test_dataset(), batch_size=batch_size, shuffle=shuffle, worker_count=worker_count, pin_memory=pin_memory)

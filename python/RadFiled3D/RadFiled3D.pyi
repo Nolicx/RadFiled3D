@@ -1,19 +1,27 @@
 import numpy as np
-from typing import Any, Tuple, Union
+from typing import Any, Tuple
 from enum import Enum
+
+
+class FieldShape(Enum):
+    CONE = 0
+    RECTANGLE = 1
+    ELLIPSIS = 2
 
 
 class DType(Enum):
     FLOAT32 = 0
     FLOAT64 = 1
     INT32 = 2
-    BYTE = 3
+    SCHAR = 3
     VEC2 = 4
     VEC3 = 5
     VEC4 = 6
     HISTOGRAM = 7
-    UINT64 = 8
-    UINT32 = 9
+    ANGULAR = 8
+    UINT64 = 9
+    UINT32 = 10
+    BYTE = 11
 
 
 class FieldType(Enum):
@@ -274,6 +282,11 @@ class Float32Voxel(Voxel):
     def __eq__(self, value: "Float32Voxel") -> bool: ...
 
 
+class SCharVoxel(Voxel):
+    def get_data(self) -> int: ...
+    def __eq__(self, value: "SCharVoxel") -> bool: ...
+
+
 class ByteVoxel(Voxel):
     def get_data(self) -> int: ...
     def __eq__(self, value: "ByteVoxel") -> bool: ...
@@ -366,6 +379,96 @@ class HistogramVoxel(Voxel):
         ...
 
 
+class AngularResolvedVoxel(Voxel):
+    def get_phi_segments(self) -> int:
+        """
+        Returns the number of phi (azimuthal) segments.
+
+        :return: The number of phi segments.
+        """
+        ...
+
+    def get_theta_segments(self) -> int:
+        """
+        Returns the number of theta (polar) segments.
+
+        :return: The number of theta segments.
+        """
+        ...
+
+    def get_total_segments(self) -> int:
+        """
+        Returns the total number of segments (phi * theta).
+
+        :return: The total number of segments.
+        """
+        ...
+
+    def get_segments_data(self) -> np.ndarray:
+        """
+        Returns all segment values as a flat numpy array.
+
+        :return: Flat array of shape (phi_segments * theta_segments,).
+        """
+        ...
+
+    def get_data(self) -> np.ndarray:
+        """
+        Returns segment values as a 2D numpy array.
+
+        :return: Array of shape (theta_segments, phi_segments).
+        """
+        ...
+
+    def get_value(self, phi_idx: int, theta_idx: int) -> float:
+        """
+        Access a segment value by grid indices.
+
+        :param phi_idx: The phi index [0, phi_segments - 1].
+        :param theta_idx: The theta index [0, theta_segments - 1].
+        :return: The segment value.
+        """
+        ...
+
+    def get_value_by_coord(self, phi: float, theta: float) -> float:
+        """
+        Access a segment value by spherical coordinates.
+
+        :param phi: Azimuthal angle in radians [0, 2*pi].
+        :param theta: Polar angle in radians [0, pi].
+        :return: The segment value.
+        """
+        ...
+
+    def add_value(self, phi: float, theta: float, value: float = 1.0) -> None:
+        """
+        Adds a value at the given spherical direction.
+
+        :param phi: Azimuthal angle in radians [0, 2*pi].
+        :param theta: Polar angle in radians [0, pi].
+        :param value: The value to add (default 1.0).
+        """
+        ...
+
+    def clear(self) -> None:
+        """
+        Clears all segments to 0.
+        """
+        ...
+
+    def __eq__(self, value: "AngularResolvedVoxel") -> bool: ...
+
+
+class OwningAngularResolvedVoxel(AngularResolvedVoxel):
+    def __init__(self, segments: uvec2) -> None:
+        """
+        Creates a new OwningAngularResolvedVoxel with the given segment resolution.
+
+        :param segments: Number of azimuthal segments (phi: azimuth, theta: polar).
+        """
+        ...
+
+
 class VoxelBuffer(object):
     def get_voxel_count(self) -> int:
         """
@@ -424,7 +527,7 @@ class VoxelBuffer(object):
         """
         ...
 
-    def get_layer_as_ndarray(self, layer_name: str) -> np.ndarray:
+    def get_layer_as_ndarray(self, layer_name: str, copy: bool = False) -> np.ndarray:
         """
         Returns the layer as a numpy ndarray.
         The ndarray will have the shape depending on the concrete BufferType.
@@ -435,6 +538,7 @@ class VoxelBuffer(object):
         The ndarray will have the dtype depending on the concrete VoxelScalar-Type.
 
         :param layer_name: The name of the layer.
+        :param copy: If True, a copy of the data will be returned. If False, a view of the data will be returned.
         :return: The layer as a numpy ndarray.
         """
         ...
@@ -456,6 +560,17 @@ class VoxelBuffer(object):
         :param layer_name: The name of the layer.
         :param bins: The number of bins in the histogram.
         :param bin_width: The bin width of the histogram.
+        :param unit: The unit of the layer.
+        """
+        ...
+
+    def add_spherical_layer(self, layer_name: str, phi_segments: int, theta_segments: int, unit: str) -> None:
+        """
+        Adds a new spherical layer with direction seperated bins to the buffer.
+
+        :param layer_name: The name of the layer.
+        :param phi_segments: The number of bins along phi angle.
+        :param theta_segments: The number of bins along theta angle.
         :param unit: The unit of the layer.
         """
         ...
@@ -502,7 +617,14 @@ class VoxelGrid(object):
 
     def get_layer(self) -> VoxelLayer: ...
 
-    def get_as_ndarray(self) -> np.ndarray: ...
+    def get_as_ndarray(self, copy: bool = False) -> np.ndarray:
+        """
+        Get the voxel grid as a numpy ndarray.
+        The ndarray will have the shape (x, y, z) depending on the voxel counts.
+        :param copy: If True, a copy of the data will be returned. If False, a view of the data will be returned.
+        :return: The voxel grid as a numpy ndarray.
+        """
+        ...
 
 
 class PolarSegments(object):
@@ -527,7 +649,14 @@ class PolarSegments(object):
 
     def get_layer(self) -> VoxelLayer: ...
 
-    def get_as_ndarray(self) -> np.ndarray: ...
+    def get_as_ndarray(self, copy: bool = False) -> np.ndarray:
+        """
+        Get the polar segments as a numpy ndarray.
+        The ndarray will have the shape (x, y) depending on the segment counts.
+        :param copy: If True, a copy of the data will be returned. If False, a view of the data will be returned.
+        :return: The polar segments as a numpy ndarray.
+        """
+        ...
 
 
 class VoxelGridBuffer(VoxelBuffer):
@@ -973,6 +1102,34 @@ class CartesianFieldAccessor(FieldAccessor):
         """
         ...
 
+    def access_field_arrays(self, file: str, channels: list[str], layers: list[str], channel_first: bool = True) -> dict[str, dict[str, np.ndarray]]:
+        """
+        Load the given channels/layers of a field directly into numpy arrays in a single pass.
+
+        Each layer's voxel data is read straight into its own buffer, which the returned numpy
+        array owns (no copy, and no C++ object is kept alive). The arrays are nested as
+        result[channel][layer].
+
+        :param file: The file path to the stored radiation field.
+        :param channels: The names of the channels to load.
+        :param layers: The names of the layers to load from every channel.
+        :param channel_first: If True the arrays have shape (c, x, y, z); otherwise (x, y, z, c).
+        :return: A dict mapping channel name -> (layer name -> numpy array).
+        """
+        ...
+
+    def access_field_arrays_from_buffer(self, buffer: bytes, channels: list[str], layers: list[str], channel_first: bool = True) -> dict[str, dict[str, np.ndarray]]:
+        """
+        Buffer-based variant of access_field_arrays.
+
+        :param buffer: The buffer to load the radiation field from.
+        :param channels: The names of the channels to load.
+        :param layers: The names of the layers to load from every channel.
+        :param channel_first: If True the arrays have shape (c, x, y, z); otherwise (x, y, z, c).
+        :return: A dict mapping channel name -> (layer name -> numpy array).
+        """
+        ...
+
     def access_layer_across_channels_from_buffer(self, buffer: bytes, layer_name: str) -> dict[str, VoxelGrid]:
         """
         Get a layer by name from a data buffer across all channels.
@@ -1126,11 +1283,10 @@ class FieldStore:
     
 
     @staticmethod
-    def init_store_instance(version: StoreVersion) -> None:
+    def ensure_registered_stores() -> None:
         """
-        Initialize the store instance with a specific version.
-
-        :param version: The version to initialize the store instance with.
+        Initialize the store instance for all existing store versions to make sure they are registered and available for use.
+        This method will be automatically called before any store operation, but can be called manually to ensure that all stores are registered before performing any store operations.
         """
         ...
 
@@ -1344,7 +1500,7 @@ class VoxelCollectionRequest(object):
 
 
 class VoxelCollection(object):
-    def get_as_ndarray(self, channel: str, layer: str) -> np.ndarray:
+    def get_as_ndarray(self, channel: str, layer: str, copy: bool = False) -> np.ndarray:
         """
         Get the collected voxels as a numpy ndarray.
 

@@ -200,6 +200,9 @@ VoxelBuffer& VoxelBuffer::operator+=(const VoxelBuffer& other)
 		case Typing::DType::Char:
 			add_layers_together<char>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
+		case Typing::DType::Byte:
+			add_layers_together<uint8_t>(this_layer_data, other_layer_data, this->voxel_count);
+			break;
 		case Typing::DType::Vec2:
 			add_layers_together<glm::vec2>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
@@ -222,9 +225,17 @@ VoxelBuffer& VoxelBuffer::operator+=(const VoxelBuffer& other)
 		case Typing::DType::Hist:
 			for (size_t i = 0; i < this->voxel_count; i++)
 			{
-				auto hist1 = (HistogramVoxel*)(layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
-				auto hist2 = (HistogramVoxel*)(other_layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
+				auto hist1 = (HistogramVoxel<float>*)(layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
+				auto hist2 = (HistogramVoxel<float>*)(other_layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
 				*hist1 += *hist2;
+			}
+			break;
+		case Typing::DType::AngularResolved:
+			for (size_t i = 0; i < this->voxel_count; i++)
+			{
+				auto sph1 = (AngularResolvedVoxel<float>*)(layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
+				auto sph2 = (AngularResolvedVoxel<float>*)(other_layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
+				*sph1 += *sph2;
 			}
 			break;
 		}
@@ -273,6 +284,9 @@ VoxelBuffer& VoxelBuffer::operator*=(const VoxelBuffer& other) {
 		case Typing::DType::Char:
 			multiply_layers_together<char>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
+		case Typing::DType::Byte:
+			multiply_layers_together<uint8_t>(this_layer_data, other_layer_data, this->voxel_count);
+			break;
 		case Typing::DType::Vec2:
 			multiply_layers_together<glm::vec2>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
@@ -295,9 +309,17 @@ VoxelBuffer& VoxelBuffer::operator*=(const VoxelBuffer& other) {
 		case Typing::DType::Hist:
 			for (size_t i = 0; i < this->voxel_count; i++)
 			{
-				auto hist1 = (HistogramVoxel*)(layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
-				auto hist2 = (HistogramVoxel*)(other_layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
+				auto hist1 = (HistogramVoxel<float>*)(layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
+				auto hist2 = (HistogramVoxel<float>*)(other_layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
 				*hist1 *= *hist2;
+			}
+			break;
+		case Typing::DType::AngularResolved:
+			for (size_t i = 0; i < this->voxel_count; i++)
+			{
+				auto sph1 = (AngularResolvedVoxel<float>*)(layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
+				auto sph2 = (AngularResolvedVoxel<float>*)(other_layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
+				*sph1 *= *sph2;
 			}
 			break;
 		}
@@ -346,6 +368,9 @@ VoxelBuffer& VoxelBuffer::operator-=(const VoxelBuffer& other) {
 		case Typing::DType::Char:
 			subtract_layers_together<char>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
+		case Typing::DType::Byte:
+			subtract_layers_together<uint8_t>(this_layer_data, other_layer_data, this->voxel_count);
+			break;
 		case Typing::DType::Vec2:
 			subtract_layers_together<glm::vec2>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
@@ -368,9 +393,17 @@ VoxelBuffer& VoxelBuffer::operator-=(const VoxelBuffer& other) {
 		case Typing::DType::Hist:
 			for (size_t i = 0; i < this->voxel_count; i++)
 			{
-				auto hist1 = (HistogramVoxel*)(layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
-				auto hist2 = (HistogramVoxel*)(other_layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
+				auto hist1 = (HistogramVoxel<float>*)(layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
+				auto hist2 = (HistogramVoxel<float>*)(other_layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
 				*hist1 -= *hist2;
+			}
+			break;
+		case Typing::DType::AngularResolved:
+			for (size_t i = 0; i < this->voxel_count; i++)
+			{
+				auto sph1 = (AngularResolvedVoxel<float>*)(layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
+				auto sph2 = (AngularResolvedVoxel<float>*)(other_layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
+				*sph1 -= *sph2;
 			}
 			break;
 		}
@@ -419,6 +452,9 @@ VoxelBuffer& VoxelBuffer::operator/=(const VoxelBuffer& other) {
 		case Typing::DType::Char:
 			divide_layers_together<char>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
+		case Typing::DType::Byte:
+			divide_layers_together<uint8_t>(this_layer_data, other_layer_data, this->voxel_count);
+			break;
 		case Typing::DType::Vec2:
 			divide_layers_together<glm::vec2>(this_layer_data, other_layer_data, this->voxel_count);
 			break;
@@ -441,9 +477,17 @@ VoxelBuffer& VoxelBuffer::operator/=(const VoxelBuffer& other) {
 		case Typing::DType::Hist:
 			for (size_t i = 0; i < this->voxel_count; i++)
 			{
-				auto hist1 = (HistogramVoxel*)(layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
-				auto hist2 = (HistogramVoxel*)(other_layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
+				auto hist1 = (HistogramVoxel<float>*)(layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
+				auto hist2 = (HistogramVoxel<float>*)(other_layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
 				*hist1 /= *hist2;
+			}
+			break;
+		case Typing::DType::AngularResolved:
+			for (size_t i = 0; i < this->voxel_count; i++)
+			{
+				auto sph1 = (AngularResolvedVoxel<float>*)(layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
+				auto sph2 = (AngularResolvedVoxel<float>*)(other_layer_info->second.voxels + i * layer_info->second.bytes_per_voxel);
+				*sph1 /= *sph2;
 			}
 			break;
 		}
@@ -487,6 +531,13 @@ VoxelBuffer& VoxelBuffer::operator+=(const float& scalar) {
 				this_data[i] += scalar;
 			}
 			break;
+		case Typing::DType::Byte:
+			for (size_t i = 0; i < this->voxel_count; i++)
+			{
+				uint8_t* this_data = (uint8_t*)this_layer_data;
+				this_data[i] += scalar;
+			}
+			break;
 		case Typing::DType::Vec2:
 			for (size_t i = 0; i < this->voxel_count; i++)
 			{
@@ -525,8 +576,15 @@ VoxelBuffer& VoxelBuffer::operator+=(const float& scalar) {
 		case Typing::DType::Hist:
 			for (size_t i = 0; i < this->voxel_count; i++)
 			{
-				auto hist = (HistogramVoxel*)(layer_info.voxels + i * layer_info.bytes_per_voxel);
+				auto hist = (HistogramVoxel<float>*)(layer_info.voxels + i * layer_info.bytes_per_voxel);
 				*hist += scalar;
+			}
+			break;
+		case Typing::DType::AngularResolved:
+			for (size_t i = 0; i < this->voxel_count; i++)
+			{
+				auto sph = (AngularResolvedVoxel<float>*)(layer_info.voxels + i * layer_info.bytes_per_voxel);
+				*sph += scalar;
 			}
 			break;
 		}
@@ -570,6 +628,13 @@ VoxelBuffer& VoxelBuffer::operator-=(const float& scalar) {
 				this_data[i] -= scalar;
 			}
 			break;
+		case Typing::DType::Byte:
+			for (size_t i = 0; i < this->voxel_count; i++)
+			{
+				uint8_t* this_data = (uint8_t*)this_layer_data;
+				this_data[i] -= scalar;
+			}
+			break;
 		case Typing::DType::Vec2:
 			for (size_t i = 0; i < this->voxel_count; i++)
 			{
@@ -608,8 +673,15 @@ VoxelBuffer& VoxelBuffer::operator-=(const float& scalar) {
 		case Typing::DType::Hist:
 			for (size_t i = 0; i < this->voxel_count; i++)
 			{
-				auto hist = (HistogramVoxel*)(layer_info.voxels + i * layer_info.bytes_per_voxel);
+				auto hist = (HistogramVoxel<float>*)(layer_info.voxels + i * layer_info.bytes_per_voxel);
 				*hist -= scalar;
+			}
+			break;
+		case Typing::DType::AngularResolved:
+			for (size_t i = 0; i < this->voxel_count; i++)
+			{
+				auto sph = (AngularResolvedVoxel<float>*)(layer_info.voxels + i * layer_info.bytes_per_voxel);
+				*sph -= scalar;
 			}
 			break;
 		}
@@ -653,6 +725,13 @@ VoxelBuffer& VoxelBuffer::operator*=(const float& scalar) {
 				this_data[i] *= scalar;
 			}
 			break;
+		case Typing::DType::Byte:
+			for (size_t i = 0; i < this->voxel_count; i++)
+			{
+				uint8_t* this_data = (uint8_t*)this_layer_data;
+				this_data[i] *= scalar;
+			}
+			break;
 		case Typing::DType::Vec2:
 			for (size_t i = 0; i < this->voxel_count; i++)
 			{
@@ -691,8 +770,15 @@ VoxelBuffer& VoxelBuffer::operator*=(const float& scalar) {
 		case Typing::DType::Hist:
 			for (size_t i = 0; i < this->voxel_count; i++)
 			{
-				auto hist = (HistogramVoxel*)(layer_info.voxels + i * layer_info.bytes_per_voxel);
+				auto hist = (HistogramVoxel<float>*)(layer_info.voxels + i * layer_info.bytes_per_voxel);
 				*hist *= scalar;
+			}
+			break;
+		case Typing::DType::AngularResolved:
+			for (size_t i = 0; i < this->voxel_count; i++)
+			{
+				auto sph = (AngularResolvedVoxel<float>*)(layer_info.voxels + i * layer_info.bytes_per_voxel);
+				*sph *= scalar;
 			}
 			break;
 		}
@@ -736,6 +822,13 @@ VoxelBuffer& VoxelBuffer::operator/=(const float& scalar) {
 				this_data[i] /= scalar;
 			}
 			break;
+		case Typing::DType::Byte:
+			for (size_t i = 0; i < this->voxel_count; i++)
+			{
+				uint8_t* this_data = (uint8_t*)this_layer_data;
+				this_data[i] /= scalar;
+			}
+			break;
 		case Typing::DType::Vec2:
 			for (size_t i = 0; i < this->voxel_count; i++)
 			{
@@ -774,8 +867,15 @@ VoxelBuffer& VoxelBuffer::operator/=(const float& scalar) {
 		case Typing::DType::Hist:
 			for (size_t i = 0; i < this->voxel_count; i++)
 			{
-				auto hist = (HistogramVoxel*)(layer_info.voxels + i * layer_info.bytes_per_voxel);
+				auto hist = (HistogramVoxel<float>*)(layer_info.voxels + i * layer_info.bytes_per_voxel);
 				*hist /= scalar;
+			}
+			break;
+		case Typing::DType::AngularResolved:
+			for (size_t i = 0; i < this->voxel_count; i++)
+			{
+				auto sph = (AngularResolvedVoxel<float>*)(layer_info.voxels + i * layer_info.bytes_per_voxel);
+				*sph /= scalar;
 			}
 			break;
 		}

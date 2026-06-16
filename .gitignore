@@ -1,0 +1,11 @@
+lib/
+build/
+__pycache__/
+*.pyc
+*.pyd
+*.egg-info/
+.pytest_cache/
+test_dataset/
+*.rf3
+*.log
+pyCMakeSetupTool/

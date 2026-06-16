@@ -1,11 +1,13 @@
 from .cartesian import CartesianFieldDataset
-from RadFiled3D.RadFiled3D import CartesianRadiationField, RadiationFieldMetadataV1, HistogramVoxel, VoxelCollection, VoxelCollectionAccessor, VoxelCollectionRequest
+from RadFiled3D.RadFiled3D import CartesianRadiationField, VoxelCollectionRequest, VoxelCollection, VoxelCollectionAccessor, FieldShape, vec2
+from RadFiled3D.metadata.v1 import Metadata
 from .base import MetadataLoadMode
 from RadFiled3D.pytorch.types import RadiationField, TrainingInputData, DirectionalInput, RadiationFieldChannel, PositionalInput
 from RadFiled3D.pytorch.helpers import RadiationFieldHelper
 import torch
 from torch import Tensor
 from typing import Union
+from .processing import DataProcessing
 
 
 class RadField3DDataset(CartesianFieldDataset):
@@ -18,56 +20,146 @@ class RadField3DDataset(CartesianFieldDataset):
     The dataset returns instances of TrainingInputData, which contains the input as a DirectionalInput as well as the ground truth as a RadiationField.
     The shape of the ground truth tensors is (c, x, y, z) c is the number of channels (typically 32 for spectra and 1 for all other layers), and (x, y, z) are the dimensions of the radiation field.
     The shape of the input tensor is (3,) for the tube direction and (n,) for the tube spectrum, where n is the number of bins in the tube spectrum.
+    The dataset can apply data processing techniques to the input data.
+    The dataset respects beam shape parameters, if available in the metadata.
     """
-    def __init__(self, file_paths: list[str] = None, zip_file: str = None):
+    GROUND_TRUTH_CHANNELS = ["scatter_field", "direct_beam"]
+    GROUND_TRUTH_LAYERS = ["spectrum", "flux", "error"]
+
+    def __init__(self, file_paths: list[str] = None, zip_file: str = None, data_processings: list[DataProcessing] = None):
         super().__init__(file_paths=file_paths, zip_file=zip_file, metadata_load_mode=MetadataLoadMode.FULL)
+        self.data_processings = data_processings if data_processings is not None else []
+        self._field_dimensions = None
+        self._has_geometry = None
+
+    @property
+    def field_dimensions(self) -> tuple[float, float, float]:
+        if self._field_dimensions is None:
+            field = self._get_field(0)
+            self._field_dimensions = (
+                field.get_voxel_counts().x * field.get_voxel_dimensions().x,
+                field.get_voxel_counts().y * field.get_voxel_dimensions().y,
+                field.get_voxel_counts().z * field.get_voxel_dimensions().z
+            )
+        return self._field_dimensions
+
+    @property
+    def has_geometry(self) -> bool:
+        if self._has_geometry is None:
+            self._has_geometry = self._get_field(0).has_channel("geometry")
+        return self._has_geometry
+
+    def _access_field_arrays(self, idx: int, channels: list[str], layers: list[str]) -> dict:
+        if self.is_dataset_zipped:
+            return self.field_accessor.access_field_arrays_from_buffer(self.load_file_buffer(idx), channels, layers, True)
+        return self.field_accessor.access_field_arrays(self.file_paths[idx], channels, layers, True)
+
+    def _load_ground_truth(self, idx: int) -> RadiationField:
+        arrays = self._access_field_arrays(idx, self.GROUND_TRUTH_CHANNELS, self.GROUND_TRUTH_LAYERS)
+
+        def t(channel: str, layer: str) -> Tensor:
+            return torch.from_numpy(arrays[channel][layer])
+
+        return RadiationField(
+            scatter_field=RadiationFieldChannel(
+                spectrum=t("scatter_field", "spectrum"),
+                flux=t("scatter_field", "flux"),
+                error=t("scatter_field", "error")
+            ),
+            direct_beam=RadiationFieldChannel(
+                spectrum=t("direct_beam", "spectrum"),
+                flux=t("direct_beam", "flux"),
+                error=t("direct_beam", "error")
+            )
+        )
+
+    def _maybe_add_geometry(self, input: DirectionalInput, idx: int) -> DirectionalInput:
+        return input
+
+    def __len__(self):
+        dataset_size = super().__len__()
+        multiplicator = 1.0
+        if self.data_processings is not None:
+            for aug in self.data_processings:
+                multiplicator *= aug.dataset_multiplier()
+        return int(dataset_size * multiplicator)
 
     def __getitem__(self, idx: int) -> TrainingInputData:
-        field, metadata = super().__getitem__(idx)
-        assert isinstance(field, CartesianRadiationField), "Dataset must contain CartesianRadiationFields."
-        assert isinstance(metadata, RadiationFieldMetadataV1), "Metadata must be of type RadiationFieldMetadataV1."
-        return self.transform2training_input(field, metadata)
+        idx = idx % len(self.file_paths)
+        metadata = self._get_metadata(idx)
+        assert isinstance(metadata, Metadata), "Metadata must be of type RadiationFieldMetadataV1."
+        with torch.no_grad():
+            input = self._maybe_add_geometry(self._build_input(metadata), idx)
+            return TrainingInputData(input=input, ground_truth=self._load_ground_truth(idx))
 
+    def _build_input(self, metadata: Metadata) -> DirectionalInput:
+        metadata_header = metadata.get_header()
+        abc = (
+            metadata_header.simulation.tube.radiation_direction.x,
+            metadata_header.simulation.tube.radiation_direction.y,
+            metadata_header.simulation.tube.radiation_direction.z
+        )
+        tube_origin = (
+            metadata_header.simulation.tube.radiation_origin.x,
+            metadata_header.simulation.tube.radiation_origin.y,
+            metadata_header.simulation.tube.radiation_origin.z
+        )
+        tube_direction = torch.tensor([abc[0], abc[1], abc[2]], dtype=torch.float32)
+        tube_origin = torch.tensor([tube_origin[0], tube_origin[1], tube_origin[2]], dtype=torch.float32)
+        field_dimensions = torch.tensor([self.field_dimensions[0], self.field_dimensions[1], self.field_dimensions[2]], dtype=torch.float32)
+        tube_origin = (tube_origin + (0.5 * field_dimensions)) / field_dimensions  # Normalize to [0, 1], assuming the origin is at the center of the field
+        tube_spectrum = metadata.simulation.tube.spectrum
+        if tube_spectrum is not None:
+            tube_spectrum = torch.tensor(tube_spectrum[:, 1], dtype=torch.float32)  # Only take the counts, not the bin edges
 
-    def transform2training_input(self, field: CartesianRadiationField, metadata: RadiationFieldMetadataV1) -> TrainingInputData:
+        field_shape = metadata.simulation.tube.field_shape
+        field_shape_params = None
+        if field_shape is not None:
+            if field_shape == FieldShape.CONE:
+                field_shape_params = torch.tensor([metadata.simulation.tube.opening_angle_deg], dtype=torch.float32)
+            elif field_shape == FieldShape.RECTANGLE:
+                rect: vec2 = metadata.simulation.tube.field_rect_dimensions_m
+                field_shape_params = torch.tensor([rect.x, rect.y], dtype=torch.float32)
+            elif field_shape == FieldShape.ELLIPSIS:
+                angles: vec2 = metadata.simulation.tube.field_ellipsis_opening_angles_deg
+                field_shape_params = torch.tensor([angles.x, angles.y], dtype=torch.float32)
+            else:
+                raise RuntimeError(f"Unsupported field shape: {field_shape}")
+            field_shape = torch.tensor([int(field_shape)], dtype=torch.float32)
+
+        return DirectionalInput(
+            direction=tube_direction,
+            origin=tube_origin,
+            spectrum=tube_spectrum,
+            beam_shape_parameters=field_shape_params,
+            beam_shape_type=field_shape
+        )
+
+    def transform2training_input(self, field: CartesianRadiationField, metadata: Metadata) -> TrainingInputData:
         with torch.no_grad():
             rad_field = RadiationField(
                 scatter_field=RadiationFieldChannel(
                     spectrum=RadiationFieldHelper.load_tensor_from_field(field, "scatter_field", "spectrum"),
-                    fluence=RadiationFieldHelper.load_tensor_from_field(field, "scatter_field", "hits"),
+                    flux=RadiationFieldHelper.load_tensor_from_field(field, "scatter_field", "flux"),
                     error=RadiationFieldHelper.load_tensor_from_field(field, "scatter_field", "error")
                 ),
-                xray_beam= RadiationFieldChannel(
-                    spectrum=RadiationFieldHelper.load_tensor_from_field(field, "xray_beam", "spectrum"),
-                    fluence=RadiationFieldHelper.load_tensor_from_field(field, "xray_beam", "hits"),
-                    error=RadiationFieldHelper.load_tensor_from_field(field, "xray_beam", "error")
+                direct_beam=RadiationFieldChannel(
+                    spectrum=RadiationFieldHelper.load_tensor_from_field(field, "direct_beam", "spectrum"),
+                    flux=RadiationFieldHelper.load_tensor_from_field(field, "direct_beam", "flux"),
+                    error=RadiationFieldHelper.load_tensor_from_field(field, "direct_beam", "error")
                 )
             )
-
-            metadata_header = metadata.get_header()
-            abc = (
-                metadata_header.simulation.tube.radiation_direction.x,
-                metadata_header.simulation.tube.radiation_direction.y,
-                metadata_header.simulation.tube.radiation_direction.z
-            )
-            tube_direction = torch.tensor([abc[0], abc[1], abc[2]], dtype=torch.float32)
-            tube_spectrum_data: HistogramVoxel = metadata.get_dynamic_metadata("tube_spectrum")
-            tube_spectrum = torch.zeros((tube_spectrum_data.get_bins(), 2), dtype=torch.float32)
-            tube_spectrum[:, 0] = torch.arange(0, tube_spectrum_data.get_bins() * tube_spectrum_data.get_histogram_bin_width(), tube_spectrum_data.get_histogram_bin_width(), dtype=torch.float32)
-            tube_spectrum[:, 1] = torch.tensor(tube_spectrum_data.get_histogram(), dtype=torch.float32)
-            tube_spectrum = tube_spectrum[:, 1]
-            tube_spectrum = torch.where(~torch.isnan(tube_spectrum), tube_spectrum, 0.0)
-            tube_spectrum = tube_spectrum / tube_spectrum.sum()
-
-            input = DirectionalInput(
-                direction=tube_direction,
-                spectrum=tube_spectrum
-            )
-
-            return TrainingInputData(
-                input=input,
-                ground_truth=rad_field
-            )
+            return TrainingInputData(input=self._build_input(metadata), ground_truth=rad_field)
+        
+    def apply_processings(self, input: TrainingInputData) -> TrainingInputData:
+        """
+        Apply all data processing modules to the input data.
+        :param input: The input data to process.
+        :return: The processed input data.
+        """
+        for processing in self.data_processings:
+            input = processing(input)
+        return input
 
 
 class RadField3DVoxelwiseDataset(RadField3DDataset):
@@ -78,15 +170,34 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
     The dataset returns instances of TrainingInputData, which contains the input as a PositionalInput as well as the ground truth as a RadiationField.
     The shape of the ground truth tensors is (c, x, y, z) c is the number of channels (typically 32 for spectra and 1 for all other layers), and (x, y, z) are the dimensions of the radiation field.
     The shape of the input tensor is (3,) for the voxel position in normalized world space [0..1] as well as the tube direction and (n,) for the tube spectrum, where n is the number of bins in the tube spectrum.
+    The dataset respects beam shape parameters, if available in the metadata.
+    The dataset respects geometry information, if available in the .rf3 files.
     """
 
-    def __init__(self, file_paths: list[str] = None, zip_file: str = None):
-        super().__init__(file_paths=file_paths, zip_file=zip_file)
-        field = self._get_field(0)
-        self.field_voxel_counts = field.get_voxel_counts()
-        self.voxels_per_field = self.field_voxel_counts.x * self.field_voxel_counts.y * self.field_voxel_counts.z
+    def __init__(self, file_paths: list[str] = None, zip_file: str = None, data_processings: list[DataProcessing] = None):
+        super().__init__(file_paths=file_paths, zip_file=zip_file, data_processings=data_processings)
+        self._field_dimensions = None
         self.cached_metadata: DirectionalInput = None
         self.cached_fields: RadiationField = None
+        self._has_geometry = None
+
+    @property
+    def field_dimensions(self) -> tuple[float, float, float]:
+        if self._field_dimensions is None:
+            field = self._get_field(0)
+            self._field_dimensions = (
+                field.get_voxel_counts().x * field.get_voxel_dimensions().x,
+                field.get_voxel_counts().y * field.get_voxel_dimensions().y,
+                field.get_voxel_counts().z * field.get_voxel_dimensions().z
+            )
+        return self._field_dimensions
+    
+    @property
+    def has_geometry(self) -> bool:
+        if self._has_geometry is None:
+            field = self._get_field(0)
+            self._has_geometry = field.has_channel("geometry")
+        return self._has_geometry
 
     def fetch_data2cache(self, files: list[str], external_fields_cache: RadiationField = None, external_metadata_cache: DirectionalInput = None) -> tuple[DirectionalInput, RadiationField]:
         """
@@ -104,22 +215,36 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
             metadata = self._get_metadata_by_path(file)
             data = self.transform2training_input(field, metadata)
             metadata_cache.direction[i] = data.input.direction.detach()
+            metadata_cache.origin[i] = data.input.origin.detach()
             metadata_cache.spectrum[i] = data.input.spectrum.detach()
+            if metadata_cache.geometry is not None and data.input.geometry is not None:
+                metadata_cache.geometry[i] = data.input.geometry.detach()
+            if metadata_cache.beam_shape_parameters is not None and data.input.beam_shape_parameters is not None:
+                metadata_cache.beam_shape_parameters[i] = data.input.beam_shape_parameters.detach()
+            if metadata_cache.beam_shape_type is not None and data.input.beam_shape_type is not None:
+                metadata_cache.beam_shape_type[i] = data.input.beam_shape_type.detach()
             fields_cache.scatter_field.spectrum[i] = data.ground_truth.scatter_field.spectrum.detach()
-            fields_cache.scatter_field.fluence[i] = data.ground_truth.scatter_field.fluence.detach()
+            fields_cache.scatter_field.flux[i] = data.ground_truth.scatter_field.flux.detach()
             fields_cache.scatter_field.error[i] = data.ground_truth.scatter_field.error.detach()
-            fields_cache.xray_beam.spectrum[i] = data.ground_truth.xray_beam.spectrum.detach()
-            fields_cache.xray_beam.fluence[i] = data.ground_truth.xray_beam.fluence.detach()
-            fields_cache.xray_beam.error[i] = data.ground_truth.xray_beam.error.detach()
+            fields_cache.direct_beam.spectrum[i] = data.ground_truth.direct_beam.spectrum.detach()
+            fields_cache.direct_beam.flux[i] = data.ground_truth.direct_beam.flux.detach()
+            fields_cache.direct_beam.error[i] = data.ground_truth.direct_beam.error.detach()
         metadata_cache.direction.requires_grad_(False)
+        metadata_cache.origin.requires_grad_(False)
         metadata_cache.spectrum.requires_grad_(False)
+        if metadata_cache.geometry is not None:
+            metadata_cache.geometry.requires_grad_(False)
+        if metadata_cache.beam_shape_parameters is not None:
+            metadata_cache.beam_shape_parameters.requires_grad_(False)
+        if metadata_cache.beam_shape_type is not None:
+            metadata_cache.beam_shape_type.requires_grad_(False)
         fields_cache.scatter_field.spectrum.requires_grad_(False)
-        fields_cache.scatter_field.fluence.requires_grad_(False)
+        fields_cache.scatter_field.flux.requires_grad_(False)
         fields_cache.scatter_field.error.requires_grad_(False)
-        fields_cache.xray_beam.spectrum.requires_grad_(False)
-        fields_cache.xray_beam.fluence.requires_grad_(False)
-        fields_cache.xray_beam.error.requires_grad_(False)
-        
+        fields_cache.direct_beam.spectrum.requires_grad_(False)
+        fields_cache.direct_beam.flux.requires_grad_(False)
+        fields_cache.direct_beam.error.requires_grad_(False)
+
         return metadata_cache, fields_cache
 
     def prefetch_data(self):
@@ -134,20 +259,26 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
         first_data = super().__getitem__(0)
         with torch.no_grad():
             field_voxel_counts = first_data.ground_truth.scatter_field.spectrum.shape[1:4]
+            scatter_spectrum_bins = first_data.ground_truth.scatter_field.spectrum.shape[0]
+            direct_spectrum_bins = first_data.ground_truth.direct_beam.spectrum.shape[0]
             self.cached_metadata = DirectionalInput(
                 direction=torch.empty((len(self.file_paths), 3), dtype=torch.float32).share_memory_(),
-                spectrum=torch.empty((len(self.file_paths), first_data.input.spectrum.shape[0]), dtype=torch.float32).share_memory_()
+                origin=torch.empty((len(self.file_paths), 3), dtype=torch.float32).share_memory_(),
+                spectrum=torch.empty((len(self.file_paths), first_data.input.spectrum.shape[0]), dtype=torch.float32).share_memory_(),
+                geometry=torch.empty((len(self.file_paths), *first_data.input.geometry.shape), dtype=torch.float32).share_memory_() if first_data.input.geometry is not None else None,
+                beam_shape_parameters=torch.empty((len(self.file_paths), first_data.input.beam_shape_parameters.shape[0]), dtype=torch.float32).share_memory_() if first_data.input.beam_shape_parameters is not None else None,
+                beam_shape_type=torch.empty((len(self.file_paths), 1), dtype=torch.float32).share_memory_() if first_data.input.beam_shape_type is not None else None
             )
 
             self.cached_fields = RadiationField(
                 scatter_field=RadiationFieldChannel(
-                    spectrum=torch.empty((len(self.file_paths), first_data.input.spectrum.shape[0], *field_voxel_counts), dtype=torch.float32).share_memory_(),
-                    fluence=torch.empty((len(self.file_paths), 1, *field_voxel_counts), dtype=torch.float32).share_memory_(),
+                    spectrum=torch.empty((len(self.file_paths), scatter_spectrum_bins, *field_voxel_counts), dtype=torch.float32).share_memory_(),
+                    flux=torch.empty((len(self.file_paths), 1, *field_voxel_counts), dtype=torch.float32).share_memory_(),
                     error=torch.empty((len(self.file_paths), 1, *field_voxel_counts), dtype=torch.float32).share_memory_()
                 ),
-                xray_beam=RadiationFieldChannel(
-                    spectrum=torch.empty((len(self.file_paths), first_data.input.spectrum.shape[0], *field_voxel_counts), dtype=torch.float32).share_memory_(),
-                    fluence=torch.empty((len(self.file_paths), 1, *field_voxel_counts), dtype=torch.float32).share_memory_(),
+                direct_beam=RadiationFieldChannel(
+                    spectrum=torch.empty((len(self.file_paths), direct_spectrum_bins, *field_voxel_counts), dtype=torch.float32).share_memory_(),
+                    flux=torch.empty((len(self.file_paths), 1, *field_voxel_counts), dtype=torch.float32).share_memory_(),
                     error=torch.empty((len(self.file_paths), 1, *field_voxel_counts), dtype=torch.float32).share_memory_()
                 )
             )
@@ -157,19 +288,19 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
     def load_voxel_training_data_from_cache(self, idx: Union[int, Tensor], xyz: Union[Tensor, tuple[int, int, int]], external_fields_cache: RadiationField = None, external_metadata_cache: DirectionalInput = None) -> TrainingInputData:
         cached_fields = self.cached_fields if external_fields_cache is None else external_fields_cache
         cached_metadata = self.cached_metadata if external_metadata_cache is None else external_metadata_cache
-        xyz = torch.tensor(xyz, dtype=torch.float32, device=cached_fields.scatter_field.fluence.device, requires_grad=False) if not isinstance(xyz, Tensor) else xyz
+        xyz = torch.tensor(xyz, dtype=torch.float32, device=cached_fields.scatter_field.flux.device, requires_grad=False) if not isinstance(xyz, Tensor) else xyz
         xyz_idx = xyz.long()
 
         field = RadiationField(
             scatter_field=RadiationFieldChannel(
                 spectrum=cached_fields.scatter_field.spectrum[idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone(),
-                fluence=cached_fields.scatter_field.fluence[idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone(),
+                flux=cached_fields.scatter_field.flux[idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone(),
                 error=cached_fields.scatter_field.error[idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone()
             ),
-            xray_beam=RadiationFieldChannel(
-                spectrum=cached_fields.xray_beam.spectrum[idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone(),
-                fluence=cached_fields.xray_beam.fluence[idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone(),
-                error=cached_fields.xray_beam.error[idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone()
+            direct_beam=RadiationFieldChannel(
+                spectrum=cached_fields.direct_beam.spectrum[idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone(),
+                flux=cached_fields.direct_beam.flux[idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone(),
+                error=cached_fields.direct_beam.error[idx, :, xyz_idx[0], xyz_idx[1], xyz_idx[2]].clone()
             )
         ) if cached_fields is not None else None
         # normalize xyz to 0 to 1
@@ -179,7 +310,11 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
         input = PositionalInput(
             position=xyz,
             direction=cached_metadata.direction[idx].clone(),
-            spectrum=cached_metadata.spectrum[idx].clone()
+            origin=cached_metadata.origin[idx].clone(),
+            spectrum=cached_metadata.spectrum[idx].clone(),
+            geometry=cached_metadata.geometry[idx].clone() if cached_metadata.geometry is not None else None,
+            beam_shape_parameters=cached_metadata.beam_shape_parameters[idx].clone() if cached_metadata.beam_shape_parameters is not None else None,
+            beam_shape_type=cached_metadata.beam_shape_type[idx].clone() if cached_metadata.beam_shape_type is not None else None
         ) if cached_metadata is not None else None
 
         return TrainingInputData(
@@ -201,46 +336,70 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
             return self.load_voxel_training_data_from_cache(file_idx, xyz)
         else:
             scatter_spectrum = self._get_voxel_flat(file_idx=file_idx, vx_idx=voxel_idx, channel_name="scatter_field", layer_name="spectrum").get_histogram()
-            scatter_fluence = self._get_voxel_flat(file_idx=file_idx, vx_idx=voxel_idx, channel_name="scatter_field", layer_name="hits").get_data()
+            scatter_flux = self._get_voxel_flat(file_idx=file_idx, vx_idx=voxel_idx, channel_name="scatter_field", layer_name="flux").get_data()
             scatter_error = self._get_voxel_flat(file_idx=file_idx, vx_idx=voxel_idx, channel_name="scatter_field", layer_name="error").get_data()
-            xray_spectrum = self._get_voxel_flat(file_idx=file_idx, vx_idx=voxel_idx, channel_name="xray_beam", layer_name="spectrum").get_histogram()
-            xray_fluence = self._get_voxel_flat(file_idx=file_idx, vx_idx=voxel_idx, channel_name="xray_beam", layer_name="hits").get_data()
-            xray_error = self._get_voxel_flat(file_idx=file_idx, vx_idx=voxel_idx, channel_name="xray_beam", layer_name="error").get_data()
+            xray_spectrum = self._get_voxel_flat(file_idx=file_idx, vx_idx=voxel_idx, channel_name="direct_beam", layer_name="spectrum").get_histogram()
+            xray_flux = self._get_voxel_flat(file_idx=file_idx, vx_idx=voxel_idx, channel_name="direct_beam", layer_name="flux").get_data()
+            xray_error = self._get_voxel_flat(file_idx=file_idx, vx_idx=voxel_idx, channel_name="direct_beam", layer_name="error").get_data()
+            geometry = self._get_voxel_flat(file_idx=file_idx, vx_idx=voxel_idx, channel_name="geometry", layer_name="density").get_data() if self.has_geometry else None
             field = RadiationField(
                 scatter_field=RadiationFieldChannel(
                     spectrum=torch.tensor(scatter_spectrum, dtype=torch.float32, device=xyz.device, requires_grad=False),
-                    fluence=torch.tensor(scatter_fluence, dtype=torch.float32, device=xyz.device, requires_grad=False),
+                    flux=torch.tensor(scatter_flux, dtype=torch.float32, device=xyz.device, requires_grad=False),
                     error=torch.tensor(scatter_error, dtype=torch.float32, device=xyz.device, requires_grad=False)
                 ),
-                xray_beam=RadiationFieldChannel(
+                direct_beam=RadiationFieldChannel(
                     spectrum=torch.tensor(xray_spectrum, dtype=torch.float32, device=xyz.device, requires_grad=False),
-                    fluence=torch.tensor(xray_fluence, dtype=torch.float32, device=xyz.device, requires_grad=False),
+                    flux=torch.tensor(xray_flux, dtype=torch.float32, device=xyz.device, requires_grad=False),
                     error=torch.tensor(xray_error, dtype=torch.float32, device=xyz.device, requires_grad=False)
                 )
             )
-            metadata = self._get_metadata(file_idx)
+            metadata: Metadata = self._get_metadata(file_idx)
             metadata_header = metadata.get_header()
             abc = (
                 metadata_header.simulation.tube.radiation_direction.x,
                 metadata_header.simulation.tube.radiation_direction.y,
                 metadata_header.simulation.tube.radiation_direction.z
             )
+            tube_origin = (
+                metadata_header.simulation.tube.radiation_origin.x,
+                metadata_header.simulation.tube.radiation_origin.y,
+                metadata_header.simulation.tube.radiation_origin.z
+            )
             tube_direction = torch.tensor([abc[0], abc[1], abc[2]], dtype=torch.float32, device=xyz.device, requires_grad=False)
-            tube_spectrum_data: HistogramVoxel = metadata.get_dynamic_metadata("tube_spectrum")
-            tube_spectrum = torch.zeros((tube_spectrum_data.get_bins(), 2), dtype=torch.float32, device=xyz.device, requires_grad=False)
-            tube_spectrum[:, 0] = torch.arange(0, tube_spectrum_data.get_bins() * tube_spectrum_data.get_histogram_bin_width(), tube_spectrum_data.get_histogram_bin_width(), dtype=torch.float32, device=xyz.device)
-            tube_spectrum[:, 1] = torch.tensor(tube_spectrum_data.get_histogram(), dtype=torch.float32, device=xyz.device, requires_grad=False)
-            tube_spectrum = tube_spectrum[:, 1]
-            tube_spectrum = torch.where(~torch.isnan(tube_spectrum), tube_spectrum, 0.0)
-            tube_spectrum = tube_spectrum / tube_spectrum.sum()
+            tube_origin = torch.tensor([tube_origin[0], tube_origin[1], tube_origin[2]], dtype=torch.float32, device=xyz.device, requires_grad=False)
+            field_dimensions = torch.tensor([self.field_dimensions[0], self.field_dimensions[1], self.field_dimensions[2]], dtype=torch.float32)
+            tube_origin = (tube_origin + (0.5 * field_dimensions)) / field_dimensions # Normalize to [0, 1], assuming the origin is at the center of the field
+            tube_spectrum = metadata.simulation.tube.spectrum
+            if tube_spectrum is not None:
+                tube_spectrum = torch.tensor(tube_spectrum[:, 1], dtype=torch.float32, device=xyz.device, requires_grad=False)
+
+            field_shape = metadata.simulation.tube.field_shape
+            beam_shape_params = None
+            if field_shape is not None:
+                if field_shape == FieldShape.CONE:
+                    beam_shape_params = torch.tensor([metadata.simulation.tube.opening_angle_deg], dtype=torch.float32)
+                elif field_shape == FieldShape.RECTANGLE:
+                    rect: vec2 = metadata.simulation.tube.field_rect_dimensions_m
+                    beam_shape_params = torch.tensor([rect.x, rect.y], dtype=torch.float32)
+                elif field_shape == FieldShape.ELLIPSIS:
+                    angles: vec2 = metadata.simulation.tube.field_ellipsis_opening_angles_deg
+                    beam_shape_params = torch.tensor([angles.x, angles.y], dtype=torch.float32)
+                else:
+                    raise RuntimeError(f"Unsupported field shape: {field_shape}")
+                field_shape = torch.tensor([int(field_shape)], dtype=torch.float32)
 
             field_voxel_counts = torch.tensor([self.field_voxel_counts.x, self.field_voxel_counts.y, self.field_voxel_counts.z], dtype=torch.float32, device=xyz.device, requires_grad=False)
             xyz = xyz / (field_voxel_counts - 1.0) # Normalize xyz to [0, 1]
 
             input = PositionalInput(
                 position=xyz,
+                origin=tube_origin,
                 direction=tube_direction,
-                spectrum=tube_spectrum
+                spectrum=tube_spectrum,
+                geometry=geometry,
+                beam_shape_parameters=beam_shape_params,
+                beam_shape_type=field_shape
             )
             return TrainingInputData(
                 input=input,
@@ -254,7 +413,7 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
         indices = torch.tensor(
             indices,
             dtype=torch.int64,
-            device=self.cached_fields.scatter_field.fluence.device if self.cached_fields is not None else None,
+            device=self.cached_fields.scatter_field.flux.device if self.cached_fields is not None else None,
             requires_grad=False
         ) if not isinstance(indices, Tensor) else indices
         file_indices = indices // self.voxels_per_field
@@ -271,21 +430,19 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
                 self.field_accessor,
                 [
                     "scatter_field",
-                    "xray_beam"
+                    "direct_beam"
                 ],
                 [
                     "spectrum",
-                    "hits",
+                    "flux",
                     "error"
                 ]
             )
+            geom_accessor = VoxelCollectionAccessor(self.field_accessor, ["geometry"], ["density"]) if self.has_geometry else None
             field_voxel_counts = torch.tensor([self.field_voxel_counts.x, self.field_voxel_counts.y, self.field_voxel_counts.z], dtype=torch.float32, device=xyz.device, requires_grad=False)
 
             requests = []
-            indices = torch.tensor(indices, dtype=torch.int64, device=self.cached_fields.scatter_field.fluence.device, requires_grad=False) if not isinstance(indices, Tensor) else indices
-            file_indices = indices // self.voxels_per_field
             unique_file_indices = torch.unique(file_indices)
-            voxel_indices = indices % self.voxels_per_field
             metadata: PositionalInput = None
             vx_count = 0
             for file_idx in unique_file_indices:
@@ -294,26 +451,46 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
                     voxel_indices=voxel_indices[file_indices == file_idx].cpu().numpy()
                 )
                 requests.append(voxel_request)
-                raw_metadata = self._get_metadata(file_idx.item())
+                raw_metadata: Metadata = self._get_metadata(file_idx.item())
                 metadata_header = raw_metadata.get_header()
                 abc = (
                     metadata_header.simulation.tube.radiation_direction.x,
                     metadata_header.simulation.tube.radiation_direction.y,
                     metadata_header.simulation.tube.radiation_direction.z
                 )
-                tube_spectrum_data: HistogramVoxel = raw_metadata.get_dynamic_metadata("tube_spectrum")
-                tube_spectrum = torch.zeros((tube_spectrum_data.get_bins(), 2), dtype=torch.float32, device=xyz.device, requires_grad=False)
-                tube_spectrum[:, 0] = torch.arange(0, tube_spectrum_data.get_bins() * tube_spectrum_data.get_histogram_bin_width(), tube_spectrum_data.get_histogram_bin_width(), dtype=torch.float32, device=xyz.device)
-                tube_spectrum[:, 1] = torch.tensor(tube_spectrum_data.get_histogram(), dtype=torch.float32, device=xyz.device, requires_grad=False)
-                tube_spectrum = tube_spectrum[:, 1]
-                tube_spectrum = torch.where(~torch.isnan(tube_spectrum), tube_spectrum, 0.0)
-                tube_spectrum = tube_spectrum / tube_spectrum.sum()
+                tube_origin = (
+                    metadata_header.simulation.tube.radiation_origin.x,
+                    metadata_header.simulation.tube.radiation_origin.y,
+                    metadata_header.simulation.tube.radiation_origin.z
+                )
+                tube_spectrum = torch.tensor(raw_metadata.simulation.tube.spectrum[:, 1], dtype=torch.float32, device=xyz.device, requires_grad=False)
+                tube_origin = torch.tensor([tube_origin[0], tube_origin[1], tube_origin[2]], dtype=torch.float32, device=xyz.device, requires_grad=False)
+                field_dimensions = torch.tensor([self.field_dimensions[0], self.field_dimensions[1], self.field_dimensions[2]], dtype=torch.float32)
+                tube_origin = (tube_origin + (0.5 * field_dimensions)) / field_dimensions # Normalize to [0, 1], assuming the origin is at the center of the field
+                field_shape = raw_metadata.simulation.tube.field_shape
+                beam_shape_params = None
+                if field_shape is not None:
+                    if field_shape == FieldShape.CONE:
+                        beam_shape_params = torch.tensor([raw_metadata.simulation.tube.opening_angle_deg], dtype=torch.float32)
+                    elif field_shape == FieldShape.RECTANGLE:
+                        rect: vec2 = raw_metadata.simulation.tube.field_rect_dimensions_m
+                        beam_shape_params = torch.tensor([rect.x, rect.y], dtype=torch.float32)
+                    elif field_shape == FieldShape.ELLIPSIS:
+                        angles: vec2 = raw_metadata.simulation.tube.field_ellipsis_opening_angles_deg
+                        beam_shape_params = torch.tensor([angles.x, angles.y], dtype=torch.float32)
+                    else:
+                        raise RuntimeError(f"Unsupported field shape: {field_shape}")
+                    field_shape = torch.tensor([int(field_shape)], dtype=torch.float32)
 
                 if metadata is None:
                     metadata: PositionalInput = PositionalInput(
                         position=xyz / (field_voxel_counts - 1.0),  # Normalize xyz to [0, 1]
                         direction=torch.empty((len(indices), 3), dtype=torch.float32, device=xyz.device, requires_grad=False),
-                        spectrum=torch.empty((len(indices), tube_spectrum.shape[-1]), dtype=torch.float32, device=xyz.device, requires_grad=False)
+                        origin=torch.empty((len(indices), 3), dtype=torch.float32, device=xyz.device, requires_grad=False),
+                        spectrum=torch.empty((len(indices), tube_spectrum.shape[-1]), dtype=torch.float32, device=xyz.device, requires_grad=False),
+                        geometry=None,
+                        beam_shape_parameters=torch.empty((len(indices), 1), dtype=torch.float32, device=xyz.device, requires_grad=False) if raw_metadata.simulation.tube.field_shape is not None else None,
+                        beam_shape_type=torch.empty((len(indices), 1), dtype=torch.float32, device=xyz.device, requires_grad=False) if raw_metadata.simulation.tube.field_shape is not None else None
                     )
 
                 metadata.direction[vx_count:vx_count + len(voxel_request.voxel_indices), 0] = abc[0]
@@ -321,23 +498,84 @@ class RadField3DVoxelwiseDataset(RadField3DDataset):
                 metadata.direction[vx_count:vx_count + len(voxel_request.voxel_indices), 2] = abc[2]
                 
                 metadata.spectrum[vx_count:vx_count + len(voxel_request.voxel_indices), :] = tube_spectrum
-                
+                if field_shape is not None:
+                    metadata.beam_shape_parameters[vx_count:vx_count + len(voxel_request.voxel_indices), :] = beam_shape_params
+                    metadata.beam_shape_type[vx_count:vx_count + len(voxel_request.voxel_indices), :] = field_shape
+                metadata.origin[vx_count:vx_count + len(voxel_request.voxel_indices), :] = tube_origin
                 vx_count += len(voxel_request.voxel_indices)
 
             collection: VoxelCollection = accessor.access(requests)
+            geom_collection: VoxelCollection = geom_accessor.access(requests) if geom_accessor is not None else None
+
+            group_to_request = torch.cat([
+                torch.nonzero(file_indices == f, as_tuple=True)[0]
+                for f in unique_file_indices
+            ])
+            restore = torch.argsort(group_to_request)
+
+            def _gt(channel: str, layer: str) -> "torch.Tensor":
+                t = torch.tensor(collection.get_as_ndarray(channel, layer), device=xyz.device, requires_grad=False)
+                return t[restore]
 
             return TrainingInputData(
-                input=metadata,
+                input=PositionalInput(
+                    position=metadata.position,
+                    direction=metadata.direction[restore],
+                    origin=metadata.origin[restore],
+                    spectrum=metadata.spectrum[restore],
+                    beam_shape_parameters=metadata.beam_shape_parameters[restore] if metadata.beam_shape_parameters is not None else None,
+                    beam_shape_type=metadata.beam_shape_type[restore] if metadata.beam_shape_type is not None else None,
+                    geometry=(
+                        torch.tensor(geom_collection.get_as_ndarray("geometry", "density"), device=xyz.device, requires_grad=False)[restore].unsqueeze(-1)
+                        if geom_collection is not None else None
+                    )
+                ),
                 ground_truth=RadiationField(
                     scatter_field=RadiationFieldChannel(
-                        spectrum=torch.tensor(collection.get_as_ndarray("scatter_field", "spectrum"), device=xyz.device, requires_grad=False),
-                        fluence=torch.tensor(collection.get_as_ndarray("scatter_field", "hits"), device=xyz.device, requires_grad=False).unsqueeze(-1),
-                        error=torch.tensor(collection.get_as_ndarray("scatter_field", "error"), device=xyz.device, requires_grad=False).unsqueeze(-1)
+                        spectrum=_gt("scatter_field", "spectrum"),
+                        flux=_gt("scatter_field", "flux").unsqueeze(-1),
+                        error=_gt("scatter_field", "error").unsqueeze(-1)
                     ),
-                    xray_beam=RadiationFieldChannel(
-                        spectrum=torch.tensor(collection.get_as_ndarray("xray_beam", "spectrum"), device=xyz.device, requires_grad=False),
-                        fluence=torch.tensor(collection.get_as_ndarray("xray_beam", "hits"), device=xyz.device, requires_grad=False).unsqueeze(-1),
-                        error=torch.tensor(collection.get_as_ndarray("xray_beam", "error"), device=xyz.device, requires_grad=False).unsqueeze(-1)
+                    direct_beam=RadiationFieldChannel(
+                        spectrum=_gt("direct_beam", "spectrum"),
+                        flux=_gt("direct_beam", "flux").unsqueeze(-1),
+                        error=_gt("direct_beam", "error").unsqueeze(-1)
                     )
                 )
             )
+
+
+class RadField3DDatasetWithGeometry(RadField3DDataset):
+    """
+    A 3D dataset class for RadField3D with additional geometric information.
+    If an .rf file contains a channel named "geometry", its "density" layer will be loaded as a tensor of shape (1, D, W, H).
+    """
+
+    def __init__(self, file_paths: list[str] = None, zip_file: str = None, data_processings: list[DataProcessing] = None, create_binary_geometry_mask: bool = False, normalize_geometry: bool = False):
+        """
+        Initialize the dataset with the given parameters.
+        Args:
+            file_paths: A list of file paths to the .rf files. Those shall be relative, if loading from a zip file.
+            zip_file: A zip file containing the .rf files.
+            data_processings: A list of data processing functions to apply to the dataset.
+            create_binary_geometry_mask: Whether to create a binary mask for the geometry.
+            normalize_geometry: Whether to normalize the geometry tensor by using z-score normalization.
+        """
+        super().__init__(file_paths, zip_file, data_processings)
+        self.create_binary_geometry_mask = create_binary_geometry_mask
+        self.should_normalize_geometry = normalize_geometry
+
+    @staticmethod
+    def normalize_geometry(geometry_tensor: torch.Tensor) -> torch.Tensor:
+        return (geometry_tensor - geometry_tensor.mean()) / (geometry_tensor.std() + 1e-6)
+
+    def _maybe_add_geometry(self, input: DirectionalInput, idx: int) -> DirectionalInput:
+        if not self.has_geometry:
+            return input._replace(geometry=None)
+        arrays = self._access_field_arrays(idx, ["geometry"], ["density"])
+        geometry_tensor = torch.from_numpy(arrays["geometry"]["density"]).to(torch.float32)
+        if self.create_binary_geometry_mask:
+            geometry_tensor = (geometry_tensor > 0.0).to(torch.float32)
+        if self.should_normalize_geometry:
+            geometry_tensor = RadField3DDatasetWithGeometry.normalize_geometry(geometry_tensor)
+        return input._replace(geometry=geometry_tensor)

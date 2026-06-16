@@ -47,11 +47,18 @@ if(RS_Build_PyBindings)
     message(STATUS "Python was already found: ${Python_EXECUTABLE}")
   endif()
 
-  if(NOT DEFINED fetch_pybind_POPULATED)
+  # Prefer a pybind11 provided by the build environment (scikit-build-core adds
+  # the build-requirement's CMake config to CMAKE_PREFIX_PATH). Fall back to
+  # fetching it for standalone CMake builds without pybind11 installed.
+  find_package(pybind11 CONFIG QUIET)
+  if(pybind11_FOUND)
+    message(STATUS "Found pybind11 via find_package: ${pybind11_VERSION}")
+  elseif(NOT DEFINED fetch_pybind_POPULATED)
+    message(STATUS "pybind11 not found, fetching via FetchContent...")
     FetchContent_Declare(
       fetch_pybind
       GIT_REPOSITORY https://github.com/pybind/pybind11.git
-      GIT_TAG        v2.13.6 # v2.11.1
+      GIT_TAG        v3.0.4 # v2.13.6
     )
     FetchContent_GetProperties(fetch_pybind)
     if(NOT fetch_pybind_POPULATED)
@@ -87,6 +94,26 @@ set_target_properties(libRadFiled3D
     LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/lib"
     RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin"
 )
+
+if(RS_Build_PyBindings)
+  pybind11_add_module(RadFiled3D python/bindings/bindings.cpp)
+  set_property(TARGET RadFiled3D PROPERTY CXX_STANDARD ${CMAKE_CXX_STANDARD})
+  add_dependencies(RadFiled3D libRadFiled3D)             
+  if (MSVC)
+    target_link_libraries(RadFiled3D PRIVATE libRadFiled3D)
+  else()
+    target_link_libraries(RadFiled3D PRIVATE libRadFiled3D stdc++fs)
+  endif()
+  set_target_properties(RadFiled3D PROPERTIES FOLDER "Library")
+
+  # Install the native module into the RadFiled3D package (used by
+  # scikit-build-core when assembling the wheel). The pure-python files and the
+  # RadFiled3D.pyi stub are added by scikit-build-core from python/RadFiled3D.
+  install(TARGETS RadFiled3D
+    LIBRARY DESTINATION RadFiled3D
+    RUNTIME DESTINATION RadFiled3D
+  )
+endif()
 
 if(BUILD_TESTS MATCHES ON)
   if(NOT DEFINED fetch_googletest_POPULATED)
@@ -149,6 +176,17 @@ if(BUILD_TESTS MATCHES ON)
 
   set_target_properties(AccessorTest PROPERTIES FOLDER "Tests")
 
+  add_executable(SphericalTest ${PROJECT_SOURCE_DIR}/tests/spherical_test.cpp)
+  target_include_directories(SphericalTest PUBLIC include PRIVATE src)
+  if (MSVC)
+    target_link_libraries(SphericalTest glm libRadFiled3D GTest::gtest_main)
+  else()
+    target_link_libraries(SphericalTest glm libRadFiled3D GTest::gtest_main stdc++fs)
+  endif()
+  set_property(TARGET SphericalTest PROPERTY CXX_STANDARD ${CMAKE_CXX_STANDARD})
+  gtest_discover_tests(SphericalTest)
+  set_target_properties(SphericalTest PROPERTIES FOLDER "Tests")
+
   include(GoogleTest)
 endif()
 
@@ -165,15 +203,3 @@ if(BUILD_EXAMPLES MATCHES ON)
 endif()
 
 set_target_properties(libRadFiled3D PROPERTIES FOLDER "Library")
-
-if(RS_Build_PyBindings)
-  pybind11_add_module(RadFiled3D python/bindings/bindings.cpp)
-  set_property(TARGET RadFiled3D PROPERTY CXX_STANDARD ${CMAKE_CXX_STANDARD})
-  add_dependencies(RadFiled3D libRadFiled3D)             
-  if (MSVC)
-    target_link_libraries(RadFiled3D PRIVATE libRadFiled3D)
-  else()
-    target_link_libraries(RadFiled3D PRIVATE libRadFiled3D stdc++fs)
-  endif()
-  set_target_properties(RadFiled3D PROPERTIES FOLDER "Library")
-endif()

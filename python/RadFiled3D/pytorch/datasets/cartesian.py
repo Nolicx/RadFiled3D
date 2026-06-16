@@ -2,20 +2,34 @@ from RadFiled3D.RadFiled3D import uvec3, vec3, CartesianRadiationField, Radiatio
 from .base import MetadataLoadMode, RadiationFieldDataset
 from typing import Union, Tuple
 from torch import Tensor
-from RadFiled3D.pytorch.types import RadiationField, RadiationFieldChannel
 
 
 class CartesianFieldDataset(RadiationFieldDataset):
     def __init__(self, file_paths: list[str] = None, zip_file: str = None, metadata_load_mode: MetadataLoadMode = MetadataLoadMode.HEADER):
         super().__init__(file_paths=file_paths, zip_file=zip_file, metadata_load_mode=metadata_load_mode)
-        field = self._get_field(0)
-        assert isinstance(field, CartesianRadiationField), "Dataset must contain CartesianRadiationFields."
+        self._field_voxel_counts = None
+        self._voxels_per_field = None
 
     def _get_field(self, idx: int) -> CartesianRadiationField:
         return super()._get_field(idx)
     
     def _get_field_accessor(self) -> CartesianFieldAccessor:
         return super()._get_field_accessor()
+    
+    @property
+    def field_voxel_counts(self) -> uvec3:
+        if self._field_voxel_counts is None:
+            field = self._get_field(0)
+            assert isinstance(field, CartesianRadiationField), "Dataset must contain CartesianRadiationFields."
+            self._field_voxel_counts = field.get_voxel_counts()
+        return self._field_voxel_counts
+    
+    @property
+    def voxels_per_field(self) -> int:
+        if self._voxels_per_field is None:
+            vx_counts = self.field_voxel_counts
+            self._voxels_per_field = int(vx_counts.x * vx_counts.y * vx_counts.z)
+        return self._voxels_per_field
     
     field_accessor: CartesianFieldAccessor = property(_get_field_accessor)
 
@@ -123,25 +137,29 @@ class CartesianFieldLayeredDataset(CartesianFieldDataset):
 class CartesianSingleVoxelDataset(CartesianFieldSingleLayerDataset):
     def __init__(self, file_paths: list[str] = None, zip_file: str = None, metadata_load_mode: MetadataLoadMode = MetadataLoadMode.HEADER):
         super().__init__(file_paths=file_paths, zip_file=zip_file, metadata_load_mode=metadata_load_mode)
-        field = self._get_field(0)
-        self.field_voxel_counts = field.get_voxel_counts()
-        self.voxels_per_field = self.field_voxel_counts.x * self.field_voxel_counts.y * self.field_voxel_counts.z
-        self.zip_ref = None # remove zip reference to avoid pickling issues
-        self._field_accessor = None # remove field accessor to avoid pickling issues
+        self._field_voxel_counts = None
+        self._voxels_per_field = None
+        self._voxel_count = None
+
+    @property
+    def voxel_count(self) -> int:
+        if self._voxel_count is None:
+            self._voxel_count = int(self.field_accessor.get_voxel_count())
+        return self._voxel_count
 
     def __len__(self) -> int:
-        vx_count = int(self.field_accessor.get_voxel_count())
-        self._field_accessor = None  # remove field accessor to avoid pickling issues
-        return super().__len__() * vx_count
-    
+        return super().__len__() * self.voxel_count
+
     def _get_field(self, idx: int) -> CartesianRadiationField:
-        return super()._get_field(idx // self.field_accessor.get_voxel_count())
-    
+        return super()._get_field(idx // self.voxel_count)
+
     def _get_metadata(self, idx) -> Union[RadiationFieldMetadata, None]:
-        return super()._get_metadata(idx // self.field_accessor.get_voxel_count())
+        return super()._get_metadata(idx // self.voxel_count)
 
     def __getitem__(self, idx) -> Tuple[Tensor, Union[Tensor, None]]:
         assert self.channel_name is not None and self.layer_name is not None, "Channel and layer must be set before loading the radiation field."
-        vx_idx = idx % self.field_accessor.get_voxel_count()
-        ret_val = (self._get_voxel_flat(idx // self.field_accessor.get_voxel_count(), vx_idx, self.channel_name, self.layer_name), self._get_metadata(idx // self.field_accessor.get_voxel_count()))
+        voxel_count = self.voxel_count
+        vx_idx = idx % voxel_count
+        file_idx = idx // voxel_count
+        ret_val = (self._get_voxel_flat(file_idx, vx_idx, self.channel_name, self.layer_name), self._get_metadata(file_idx))
         return (self.transform(ret_val[0], idx), self.transform_origin(ret_val[1], idx))

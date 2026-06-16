@@ -1,4 +1,7 @@
-from RadFiled3D.RadFiled3D import CartesianRadiationField, FieldStore, CartesianFieldAccessor, StoreVersion, DType, vec3, uvec3, RadiationFieldMetadataV1, RadiationFieldSoftwareMetadataV1, RadiationFieldXRayTubeMetadataV1, RadiationFieldSimulationMetadataV1
+from RadFiled3D.RadFiled3D import CartesianRadiationField, FieldShape, CartesianFieldAccessor, StoreVersion, DType, vec2, vec3, uvec3, RadiationFieldMetadataHeaderV1
+from RadFiled3D.utils import FieldStore
+from RadFiled3D.metadata.v1 import Metadata
+import numpy as np
 
 
 def setup_test_file(name: str):
@@ -11,11 +14,10 @@ def setup_test_file(name: str):
     assert field.get_voxel_counts() == uvec3(10, 10, 10)
 
     array = field.get_channel("channel1").get_layer_as_ndarray("doserate")
-    assert array.shape == (10, 10, 10)
+    assert array.shape == (10, 10, 10, 1)
     assert array.dtype == "float32"
 
     array[:, :, :] = 1.0
-
     array[2:5, 2:5, 2:5] = 2.0
 
     array = field.get_channel("channel1").get_layer_as_ndarray("doserate")
@@ -24,25 +26,26 @@ def setup_test_file(name: str):
     assert array.min() == 1.0
     assert array.max() == 2.0
 
-    metadata = RadiationFieldMetadataV1(
-        RadiationFieldSimulationMetadataV1(
-            100,
-            "",
-            "Phys",
-            RadiationFieldXRayTubeMetadataV1(
-                vec3(0, 0, 0),
-                vec3(0, 0, 0),
-                0,
-                "TubeID"
-            )
-        ),
-        RadiationFieldSoftwareMetadataV1(
-            "RadFiled3D",
-            "0.1.0",
-            "repo",
-            "commit"
-        )
-    )
+    field.get_channel("channel1").get_voxel_by_coord("doserate", 0.99, 0.0, 0.0).set_data(3.0)
+    field.get_channel("channel1").get_voxel_by_coord("doserate", 0.0, 0.99, 0.0).set_data(4.0)
+    field.get_channel("channel1").get_voxel_by_coord("doserate", 0.0, 0.0, 0.99).set_data(5.0)
+
+    print(array)
+
+    assert array[9, 0, 0] == 3.0
+    assert array[0, 9, 0] == 4.0
+    assert array[0, 0, 9] == 5.0
+
+    metadata = Metadata.default()
+    metadata.simulation.tube.tube_id = "TestTube"
+    metadata.simulation.tube.radiation_origin = vec3(0, -1, 0)
+    metadata.simulation.tube.radiation_direction = vec3(0, 1, 0)
+    metadata.simulation.tube.max_energy_eV = 1500.0
+    metadata.simulation.tube.field_shape = FieldShape.ELLIPSIS
+    metadata.software.name = "RadFiled3DTest"
+    metadata.software.version = "0.0.0"
+    metadata.software.repository = "test"
+    metadata.software.commit = "commit"
     FieldStore.store(field, metadata, name, StoreVersion.V1)
 
 
@@ -56,10 +59,29 @@ def test_creation():
     assert field.get_voxel_counts() == uvec3(10, 10, 10)
 
     array = field.get_channel("channel1").get_layer_as_ndarray("layer1")
-    assert array.shape == (10, 10, 10)
+    assert array.shape == (10, 10, 10, 1)
     assert array.dtype == "float32"
     assert array.min() == 0.0
     assert array.max() == 0.0
+
+
+def test_copy_and_referencing():
+    field = CartesianRadiationField(vec3(1, 1, 1), vec3(0.1, 0.1, 0.1))
+    field.add_channel("channel1")
+    field.get_channel("channel1").add_layer("layer1", "unit1", DType.FLOAT32)
+
+    ch = field.get_channel("channel1")
+    array = ch.get_layer_as_ndarray("layer1", copy=True)
+    array[:] = 1.23
+    array_old = field.get_channel("channel1").get_layer_as_ndarray("layer1", copy=False)
+    assert array_old.min() == 0.0
+    assert array_old.max() == 0.0
+    assert array.min() == 1.23
+    assert array.max() == 1.23
+    array_old[:] = 4.56
+    array_new = field.get_channel("channel1").get_layer_as_ndarray("layer1", copy=False)
+    assert array_new.min() == 4.56
+    assert array_new.max() == 4.56
 
 
 def test_modification_via_ndarray():
@@ -72,7 +94,7 @@ def test_modification_via_ndarray():
     assert field.get_voxel_counts() == uvec3(10, 10, 10)
 
     array = field.get_channel("channel1").get_layer_as_ndarray("layer1")
-    assert array.shape == (10, 10, 10)
+    assert array.shape == (10, 10, 10, 1)
     assert array.dtype == "float32"
 
     array[:, :, :] = 1.0
@@ -111,34 +133,24 @@ def test_modification_via_voxels():
 
 def test_metadata_store_and_peek():
     field = CartesianRadiationField(vec3(1, 1, 1), vec3(0.1, 0.1, 0.1))
-    metadata = RadiationFieldMetadataV1(
-        RadiationFieldSimulationMetadataV1(
-            100,
-            "",
-            "Phys",
-            RadiationFieldXRayTubeMetadataV1(
-                vec3(0, 0, 0),
-                vec3(0, 1, 0),
-                0,
-                "TubeID"
-            )
-        ),
-        RadiationFieldSoftwareMetadataV1(
-            "RadFiled3D",
-            "0.1.0",
-            "repo",
-            "commit",
-            ""
-        )
-    )
+    metadata = Metadata.default()
+    metadata.simulation.tube.tube_id = "TubeID"
+    metadata.simulation.tube.radiation_origin = vec3(0, 1, 0)
+    metadata.simulation.tube.radiation_direction = vec3(0, 0, 0)
+    metadata.simulation.tube.max_energy_eV = 0
+    metadata.simulation.primary_particle_count = 101
+    metadata.software.name = "RadFiled3DTest"
+    metadata.software.version = "0.0.0"
+    metadata.software.repository = "test"
+    metadata.software.commit = "commit"
     FieldStore.store(field, metadata, "test01.rf3", StoreVersion.V1)
 
-    metadata2 = FieldStore.peek_metadata("test01.rf3").get_header()
+    metadata2: RadiationFieldMetadataHeaderV1 = FieldStore.peek_metadata("test01.rf3").get_header()
 
-    assert metadata2.simulation.primary_particle_count == 100
-    assert metadata2.software.name == "RadFiled3D"
-    assert metadata2.software.version == "0.1.0"
-    assert metadata2.software.repository == "repo"
+    assert metadata2.simulation.primary_particle_count == 101
+    assert metadata2.software.name == "RadFiled3DTest"
+    assert metadata2.software.version == "0.0.0"
+    assert metadata2.software.repository == "test"
     assert metadata2.software.commit == "commit"
     assert metadata2.simulation.tube.radiation_origin == vec3(0, 1, 0)
     assert metadata2.simulation.tube.radiation_direction == vec3(0, 0, 0)
@@ -148,40 +160,50 @@ def test_metadata_store_and_peek():
 
 def test_metadata_store_and_load():
     field = CartesianRadiationField(vec3(1, 1, 1), vec3(0.1, 0.1, 0.1))
-    metadata = RadiationFieldMetadataV1(
-        RadiationFieldSimulationMetadataV1(
-            100,
-            "",
-            "Phys",
-            RadiationFieldXRayTubeMetadataV1(
-                vec3(0, 0, 0),
-                vec3(0, 1, 0),
-                0,
-                "TubeID"
-            )
-        ),
-        RadiationFieldSoftwareMetadataV1(
-            "RadFiled3D",
-            "0.1.0",
-            "repo",
-            "commit",
-            ""
-        )
-    )
+    metadata = Metadata.default()
+    metadata.simulation.tube.tube_id = "TubeID"
+    metadata.simulation.tube.radiation_origin = vec3(0, 1, 0)
+    metadata.simulation.tube.radiation_direction = vec3(0, 0, 0)
+    metadata.simulation.tube.max_energy_eV = 1500.0
+    metadata.simulation.primary_particle_count = 101
+    metadata.software.name = "RadFiled3DTest"
+    metadata.software.version = "0.0.0"
+    metadata.software.repository = "test"
+    metadata.software.commit = "commit"
+    metadata.simulation.tube.field_shape = FieldShape.ELLIPSIS
+    metadata.simulation.tube.field_ellipsis_opening_angles_deg = vec2(30.0, 20.0)
+
+    spectrum = np.zeros((150, 2), dtype=np.float32)
+    spectrum[:, 0] = np.arange(150, dtype=np.float32) * 10.0
+    spectrum[:, 1] = 1.0 / 150.0
+    metadata.simulation.tube.spectrum = spectrum
+    spec2 = metadata.simulation.tube.spectrum
+    assert np.isclose(spectrum, spec2).all()
+
     FieldStore.store(field, metadata, "test02.rf3", StoreVersion.V1)
 
     metadata2 = FieldStore.load_metadata("test02.rf3")
-    meatadata2_header = metadata2.get_header()
+    metadata2_header = metadata2.get_header()
 
-    assert meatadata2_header.simulation.primary_particle_count == 100
-    assert meatadata2_header.software.name == "RadFiled3D"
-    assert meatadata2_header.software.version == "0.1.0"
-    assert meatadata2_header.software.repository == "repo"
-    assert meatadata2_header.software.commit == "commit"
-    assert meatadata2_header.simulation.tube.radiation_origin == vec3(0, 1, 0)
-    assert meatadata2_header.simulation.tube.radiation_direction == vec3(0, 0, 0)
-    assert meatadata2_header.simulation.tube.max_energy_eV == 0
-    assert meatadata2_header.simulation.tube.tube_id == "TubeID"
+    assert metadata2_header.simulation.primary_particle_count == 101
+    assert metadata2_header.software.name == "RadFiled3DTest"
+    assert metadata2_header.software.version == "0.0.0"
+    assert metadata2_header.software.repository == "test"
+    assert metadata2_header.software.commit == "commit"
+    assert metadata2_header.simulation.tube.radiation_origin == vec3(0, 1, 0)
+    assert metadata2_header.simulation.tube.radiation_direction == vec3(0, 0, 0)
+    assert metadata2_header.simulation.tube.tube_id == "TubeID"
+
+    assert metadata2.simulation.tube.field_shape == FieldShape.ELLIPSIS
+    assert metadata2.simulation.tube.field_ellipsis_opening_angles_deg.x == 30.0
+    assert metadata2.simulation.tube.field_ellipsis_opening_angles_deg.y == 20.0
+    assert metadata2.simulation.tube.max_energy_eV == 1500.0
+    assert metadata2.simulation.tube.spectrum.shape == (150, 2)
+    assert np.isclose(metadata2.simulation.tube.spectrum[0, 0], 0.0)
+    assert np.isclose(metadata2.simulation.tube.spectrum[-1, 0], 1490.0)
+    assert np.isclose(metadata2.simulation.tube.spectrum[0, 1], 1.0 / 150.0)
+    assert np.isclose(metadata2.simulation.tube.spectrum[-1, 1], 1.0 / 150.0)
+    assert np.isclose(np.sum(metadata2.simulation.tube.spectrum[:, 1]), 1.0)
 
 
 def test_store_and_load():
@@ -194,7 +216,7 @@ def test_store_and_load():
     assert field.get_voxel_counts() == uvec3(10, 10, 10)
 
     array = field.get_channel("channel1").get_layer_as_ndarray("layer1")
-    assert array.shape == (10, 10, 10)
+    assert array.shape == (10, 10, 10, 1)
     assert array.dtype == "float32"
 
     array[:, :, :] = 1.0
@@ -207,25 +229,7 @@ def test_store_and_load():
     assert array.min() == 1.0
     assert array.max() == 2.0
 
-    metadata = RadiationFieldMetadataV1(
-        RadiationFieldSimulationMetadataV1(
-            100,
-            "",
-            "Phys",
-            RadiationFieldXRayTubeMetadataV1(
-                vec3(0, 0, 0),
-                vec3(0, 0, 0),
-                0,
-                "TubeID"
-            )
-        ),
-        RadiationFieldSoftwareMetadataV1(
-            "RadFiled3D",
-            "0.1.0",
-            "repo",
-            "commit"
-        )
-    )
+    metadata = Metadata.default()
     FieldStore.store(field, metadata, "test02.rf3", StoreVersion.V1)
 
     field2: CartesianRadiationField = FieldStore.load("test02.rf3")
@@ -235,7 +239,7 @@ def test_store_and_load():
     assert field2.get_voxel_counts() == uvec3(10, 10, 10)
 
     array2 = field2.get_channel("channel1").get_layer_as_ndarray("layer1")
-    assert array2.shape == (10, 10, 10)
+    assert array2.shape == (10, 10, 10, 1)
     assert array2.dtype == "float32"
 
     arr1 = field.get_channel("channel1").get_layer_as_ndarray("layer1")
@@ -272,7 +276,9 @@ def test_single_layer_loading():
     
     doserate = accessor.access_layer_from_buffer(data, "channel1", "doserate")
     doserate = doserate.get_as_ndarray()
-    assert doserate.shape == (10, 10, 10)
+    doserate[:, :, :] = 1.0  # just to check that we can modify it
+    doserate[2, 2, 2] = 2.0
+    assert doserate.shape == (10, 10, 10, 1)
     assert doserate.dtype == "float32"
     assert doserate[0, 0, 0] == 1.0
     assert doserate[2, 2, 2] == 2.0
@@ -281,7 +287,9 @@ def test_single_layer_loading():
 
     doserate = accessor.access_layer("test03.rf3", "channel1", "doserate")
     doserate = doserate.get_as_ndarray()
-    assert doserate.shape == (10, 10, 10)
+    doserate[:, :, :] = 1.0  # just to check that we can modify it
+    doserate[2, 2, 2] = 2.0
+    assert doserate.shape == (10, 10, 10, 1)
     assert doserate.dtype == "float32"
     assert doserate[0, 0, 0] == 1.0
     assert doserate[2, 2, 2] == 2.0
