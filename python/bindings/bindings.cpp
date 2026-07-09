@@ -30,6 +30,19 @@ typedef Py_ssize_t ssize_t;
 #endif
 
 namespace py = pybind11;
+
+// pybind11 (and numpy's buffer protocol) has no built-in descriptor for the half
+// precision type, so expose it as the numpy 'e' (float16) format here. This lets
+// buffer_info-based arrays interpret raw fp16 voxel data as numpy.float16.
+#if RADFILED3D_HAS_FLOAT16
+namespace pybind11 {
+    template <>
+    struct format_descriptor<RadFiled3D::Typing::float16> {
+        static std::string format() { return "e"; }
+    };
+}
+#endif
+
 using namespace pybind11::detail;
 using namespace RadFiled3D;
 using namespace RadFiled3D::Storage;
@@ -118,6 +131,10 @@ std::shared_ptr<IVoxel> encapsulate_voxel(IVoxel *vx)
     {
     case Typing::DType::Float:
         return VOXEL_CAPSULE(vx, ScalarVoxel<float>);
+#if RADFILED3D_HAS_FLOAT16
+    case Typing::DType::Float16:
+        return VOXEL_CAPSULE(vx, ScalarVoxel<RadFiled3D::Typing::float16>);
+#endif
     case Typing::DType::Double:
         return VOXEL_CAPSULE(vx, ScalarVoxel<double>);
     case Typing::DType::Int:
@@ -459,22 +476,17 @@ py::array owning_layer_array(std::shared_ptr<VoxelGrid> grid, bool channel_first
 static py::array layer_to_owning_array(std::shared_ptr<VoxelGrid> grid, bool channel_first)
 {
     const Typing::DType type = Typing::Helper::get_dtype(grid->get_layer()->get_voxel_flat<IVoxel>(0).get_type());
-    switch (type)
-    {
-    case Typing::DType::Double:
-        return owning_layer_array<double>(grid, channel_first);
-    case Typing::DType::Int:
-        return owning_layer_array<int>(grid, channel_first);
-    case Typing::DType::Char:
-        return owning_layer_array<char>(grid, channel_first);
-    case Typing::DType::Byte:
-        return owning_layer_array<uint8_t>(grid, channel_first);
-    case Typing::DType::UInt64:
-        return owning_layer_array<uint64_t>(grid, channel_first);
-    case Typing::DType::UInt32:
-        return owning_layer_array<unsigned long>(grid, channel_first);
-    default:
-        return owning_layer_array<float>(grid, channel_first);
+    switch (type) {
+#if RADFILED3D_HAS_FLOAT16
+    case Typing::DType::Float16: return owning_layer_array<RadFiled3D::Typing::float16>(grid, channel_first);
+#endif
+    case Typing::DType::Double: return owning_layer_array<double>(grid, channel_first);
+    case Typing::DType::Int: return owning_layer_array<int>(grid, channel_first);
+    case Typing::DType::Char: return owning_layer_array<char>(grid, channel_first);
+    case Typing::DType::Byte: return owning_layer_array<uint8_t>(grid, channel_first);
+    case Typing::DType::UInt64: return owning_layer_array<uint64_t>(grid, channel_first);
+    case Typing::DType::UInt32: return owning_layer_array<unsigned long>(grid, channel_first);
+    default: return owning_layer_array<float>(grid, channel_first);
     }
 }
 
@@ -1181,6 +1193,23 @@ PYBIND11_MODULE(RadFiled3D, m)
     DECLARE_SCALAR_VOXEL(m, float, "Float32Voxel", IVoxel);
     DECLARE_OWNING_SCALAR_VOXEL(m, float, "OwningFloat32Voxel", ScalarVoxel<float>);
 
+#if RADFILED3D_HAS_FLOAT16
+    // Half precision has no Python scalar and no std::to_string/pybind arg-caster, so it is
+    // exposed through float on the Python side while staying fp16 in the underlying buffer.
+    py::class_<ScalarVoxel<RadFiled3D::Typing::float16>, std::shared_ptr<ScalarVoxel<RadFiled3D::Typing::float16>>, IVoxel>(m, "Float16Voxel")
+        .def("get_data", [](const ScalarVoxel<RadFiled3D::Typing::float16>& v) { return (float)v.get_data(); })
+        .def("set_data", [](ScalarVoxel<RadFiled3D::Typing::float16>& v, float value) { v = (RadFiled3D::Typing::float16)value; })
+        .def("__repr__", [](const ScalarVoxel<RadFiled3D::Typing::float16>& a) {
+            return "<RadFiled3D.Float16Voxel (" + std::to_string((float)a.get_data()) + ")>";
+        });
+    py::class_<OwningScalarVoxel<RadFiled3D::Typing::float16>, std::shared_ptr<OwningScalarVoxel<RadFiled3D::Typing::float16>>, ScalarVoxel<RadFiled3D::Typing::float16>>(m, "OwningFloat16Voxel")
+        .def("get_data", [](const OwningScalarVoxel<RadFiled3D::Typing::float16>& v) { return (float)v.get_data(); })
+        .def("set_data", [](OwningScalarVoxel<RadFiled3D::Typing::float16>& v, float value) { RadFiled3D::Typing::float16 h = (RadFiled3D::Typing::float16)value; v.set_data(&h); })
+        .def("__repr__", [](const OwningScalarVoxel<RadFiled3D::Typing::float16>& a) {
+            return "<RadFiled3D.OwningFloat16Voxel (" + std::to_string((float)a.get_data()) + ")>";
+        });
+#endif
+
 #if defined(__x86_64__) || defined(_M_X64)
     DECLARE_SCALAR_VOXEL(m, uint64_t, "UInt64Voxel", IVoxel);
     DECLARE_OWNING_SCALAR_VOXEL(m, uint64_t, "OwningUInt64Voxel", ScalarVoxel<uint64_t>);
@@ -1443,7 +1472,11 @@ PYBIND11_MODULE(RadFiled3D, m)
         .value("ANGULAR", Typing::DType::AngularResolved)
         .value("UINT64", Typing::DType::UInt64)
         .value("UINT32", Typing::DType::UInt32)
-        .value("BYTE", Typing::DType::Byte);
+        .value("BYTE", Typing::DType::Byte)
+        .value("FLOAT16", Typing::DType::Float16);
+
+    // Whether this build can actually use DType.FLOAT16 (depends on the compiler providing _Float16).
+    m.attr("HAS_FLOAT16") = py::bool_(RADFILED3D_HAS_FLOAT16 != 0);
 
     py::enum_<FieldJoinMode>(m, "FieldJoinMode")
         .value("IDENTITY", FieldJoinMode::Identity)
@@ -1482,6 +1515,13 @@ PYBIND11_MODULE(RadFiled3D, m)
                 case Typing::DType::Float:
                     self.add_layer<float>(name, 0.f, unit);
                     break;
+                case Typing::DType::Float16:
+#if RADFILED3D_HAS_FLOAT16
+                    self.add_layer<RadFiled3D::Typing::float16>(name, (RadFiled3D::Typing::float16)0.f, unit);
+                    break;
+#else
+                    throw RadFiled3DError("RadFiled3D was built without float16 support (needs GCC >= 12 or a modern Clang). Rebuild with a newer toolset to use DType.FLOAT16.");
+#endif
                 case Typing::DType::Double:
                     self.add_layer<double>(name, 0.0, unit);
                     break;
@@ -1532,6 +1572,10 @@ PYBIND11_MODULE(RadFiled3D, m)
                 switch (type) {
                     case Typing::DType::Float:
                         return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<float>>(layer_name, idx));
+#if RADFILED3D_HAS_FLOAT16
+                    case Typing::DType::Float16:
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<RadFiled3D::Typing::float16>>(layer_name, idx));
+#endif
                     case Typing::DType::Double:
                         return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<double>>(layer_name, idx));
                     case Typing::DType::Int:
@@ -1563,6 +1607,10 @@ PYBIND11_MODULE(RadFiled3D, m)
                 switch (type) {
                     case Typing::DType::Float:
                         return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<float>>(layer_name, x, y, z));
+#if RADFILED3D_HAS_FLOAT16
+                    case Typing::DType::Float16:
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<RadFiled3D::Typing::float16>>(layer_name, x, y, z));
+#endif
                     case Typing::DType::Double:
                         return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<double>>(layer_name, x, y, z));
                     case Typing::DType::Int:
@@ -1594,6 +1642,10 @@ PYBIND11_MODULE(RadFiled3D, m)
                 switch (type) {
                     case Typing::DType::Float:
                         return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<float>>(layer_name, x, y, z));
+#if RADFILED3D_HAS_FLOAT16
+                    case Typing::DType::Float16:
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<RadFiled3D::Typing::float16>>(layer_name, x, y, z));
+#endif
                     case Typing::DType::Double:
                         return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<double>>(layer_name, x, y, z));
                     case Typing::DType::Int:
@@ -1628,6 +1680,10 @@ PYBIND11_MODULE(RadFiled3D, m)
                     switch (type) {
                         case Typing::DType::Float:
 							return create_py_array<float>(self->get_layer<float>(layer), self->get_voxel_counts(), self, copy);
+#if RADFILED3D_HAS_FLOAT16
+                        case Typing::DType::Float16:
+							return create_py_array<RadFiled3D::Typing::float16>(self->get_layer<RadFiled3D::Typing::float16>(layer), self->get_voxel_counts(), self, copy);
+#endif
                         case Typing::DType::Double:
 							return create_py_array<double>(self->get_layer<double>(layer), self->get_voxel_counts(), self, copy);
                         case Typing::DType::Int:
@@ -1689,6 +1745,10 @@ PYBIND11_MODULE(RadFiled3D, m)
                     switch (type) {
                     case Typing::DType::Float:
                         return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<float>>(idx));
+#if RADFILED3D_HAS_FLOAT16
+                    case Typing::DType::Float16:
+                        return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<RadFiled3D::Typing::float16>>(idx));
+#endif
                     case Typing::DType::Double:
                         return VOXEL_REFERENCE(&self.get_voxel_flat<ScalarVoxel<double>>(idx));
                     case Typing::DType::Int:
@@ -1732,6 +1792,10 @@ PYBIND11_MODULE(RadFiled3D, m)
                     switch (type) {
                     case Typing::DType::Float:
                         return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<float>>(x, y, z));
+#if RADFILED3D_HAS_FLOAT16
+                    case Typing::DType::Float16:
+                        return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<RadFiled3D::Typing::float16>>(x, y, z));
+#endif
                     case Typing::DType::Double:
                         return VOXEL_REFERENCE(&self.get_voxel<ScalarVoxel<double>>(x, y, z));
                     case Typing::DType::Int:
@@ -1761,6 +1825,10 @@ PYBIND11_MODULE(RadFiled3D, m)
                     switch (type) {
                     case Typing::DType::Float:
                         return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<float>>(x, y, z));
+#if RADFILED3D_HAS_FLOAT16
+                    case Typing::DType::Float16:
+                        return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<RadFiled3D::Typing::float16>>(x, y, z));
+#endif
                     case Typing::DType::Double:
                         return VOXEL_REFERENCE(&self.get_voxel_by_coord<ScalarVoxel<double>>(x, y, z));
                     case Typing::DType::Int:
@@ -1804,6 +1872,10 @@ PYBIND11_MODULE(RadFiled3D, m)
 					    switch (type) {
 					    case Typing::DType::Float:
 						    return create_py_array<float>((float*)self->get_layer()->get_raw_data(), self->get_voxel_counts(), self, copy);
+#if RADFILED3D_HAS_FLOAT16
+					    case Typing::DType::Float16:
+						    return create_py_array<RadFiled3D::Typing::float16>((RadFiled3D::Typing::float16*)self->get_layer()->get_raw_data(), self->get_voxel_counts(), self, copy);
+#endif
 					    case Typing::DType::Double:
 						    return create_py_array<double>((double*)self->get_layer()->get_raw_data(), self->get_voxel_counts(), self, copy);
 					    case Typing::DType::Int:
@@ -1906,6 +1978,10 @@ PYBIND11_MODULE(RadFiled3D, m)
                     switch (type) {
                     case Typing::DType::Float:
                         return create_py_array<float>((float*)self->get_layer()->get_raw_data(), self->get_segments_count(), self, copy);
+#if RADFILED3D_HAS_FLOAT16
+                    case Typing::DType::Float16:
+                        return create_py_array<RadFiled3D::Typing::float16>((RadFiled3D::Typing::float16*)self->get_layer()->get_raw_data(), self->get_segments_count(), self, copy);
+#endif
                     case Typing::DType::Double:
                         return create_py_array<double>((double*)self->get_layer()->get_raw_data(), self->get_segments_count(), self, copy);
                     case Typing::DType::Int:
@@ -2028,6 +2104,10 @@ PYBIND11_MODULE(RadFiled3D, m)
                 switch (type) {
                     case Typing::DType::Float:
 						return create_py_array<float>(self->get_layer<float>(layer), self->get_segments_count(), self, copy);
+#if RADFILED3D_HAS_FLOAT16
+                    case Typing::DType::Float16:
+						return create_py_array<RadFiled3D::Typing::float16>(self->get_layer<RadFiled3D::Typing::float16>(layer), self->get_segments_count(), self, copy);
+#endif
                     case Typing::DType::Double:
 						return create_py_array<double>(self->get_layer<double>(layer), self->get_segments_count(), self, copy);
                     case Typing::DType::Int:
@@ -2439,6 +2519,10 @@ PYBIND11_MODULE(RadFiled3D, m)
                 switch (type) {
                     case Typing::DType::Float:
                         return create_owning_py_array<float>(data_buffer, voxel_count, sizeof(float));
+#if RADFILED3D_HAS_FLOAT16
+                    case Typing::DType::Float16:
+                        return create_owning_py_array<RadFiled3D::Typing::float16>(data_buffer, voxel_count, sizeof(RadFiled3D::Typing::float16));
+#endif
                     case Typing::DType::Double:
                         return create_owning_py_array<double>(data_buffer, voxel_count, sizeof(double));
                     case Typing::DType::Int:

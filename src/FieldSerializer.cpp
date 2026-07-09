@@ -1,4 +1,6 @@
-#pragma comment(lib, "Dbghelp.lib")
+#if defined(_WIN32) || defined(_WIN64)
+#pragma comment(lib, "Dbghelp.lib")  // Windows-only dependent library; guarded so non-MSVC linkers don't choke
+#endif
 #include "RadFiled3D/storage/FieldSerializer.hpp"
 #include "RadFiled3D/VoxelBuffer.hpp"
 #include <glm/vec2.hpp>
@@ -115,6 +117,13 @@ VoxelLayer *Storage::V1::BinayFieldBlockHandler::deserializeLayer(char *data, si
 	case Typing::DType::Float:
 		layer = VoxelLayer::ConstructFromBufferRaw<float>(std::string(layer_desc.unit), voxel_count, layer_desc.statistical_error, data + mem_pos, true);
 		break;
+	case Typing::DType::Float16:
+#if RADFILED3D_HAS_FLOAT16
+		layer = VoxelLayer::ConstructFromBufferRaw<RadFiled3D::Typing::float16>(std::string(layer_desc.unit), voxel_count, layer_desc.statistical_error, data + mem_pos, true);
+		break;
+#else
+		throw std::runtime_error("RadFiled3D was built without float16 support (needs GCC >= 12 or a modern Clang).");
+#endif
 	case Typing::DType::Double:
 #if defined(__x86_64__) || defined(_M_X64)
 		layer = VoxelLayer::ConstructFromBufferRaw<double>(std::string(layer_desc.unit), voxel_count, layer_desc.statistical_error, data + mem_pos, true);
@@ -177,7 +186,14 @@ VoxelLayer *Storage::V1::BinayFieldBlockHandler::constructOwnedLayer(const Filed
 	switch (dtype)
 	{
 	case Typing::DType::Float:
-		return VoxelLayer::ConstructWithOwnedDataBuffer<float>(unit, voxel_count, stat_err, (float *)owned_data);
+		return VoxelLayer::ConstructWithOwnedDataBuffer<float>(unit, voxel_count, stat_err, (float*)owned_data);
+	case Typing::DType::Float16:
+#if RADFILED3D_HAS_FLOAT16
+		return VoxelLayer::ConstructWithOwnedDataBuffer<RadFiled3D::Typing::float16>(unit, voxel_count, stat_err, (RadFiled3D::Typing::float16*)owned_data);
+#else
+		delete[] owned_data;
+		throw std::runtime_error("RadFiled3D was built without float16 support (needs GCC >= 12 or a modern Clang).");
+#endif
 	case Typing::DType::Double:
 #if defined(__x86_64__) || defined(_M_X64)
 		return VoxelLayer::ConstructWithOwnedDataBuffer<double>(unit, voxel_count, stat_err, (double *)owned_data);

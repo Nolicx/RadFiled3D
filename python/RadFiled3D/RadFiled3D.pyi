@@ -3,6 +3,10 @@ from typing import Any, Tuple
 from enum import Enum
 
 
+# Whether this build supports DType.FLOAT16 (requires a compiler providing _Float16).
+HAS_FLOAT16: bool
+
+
 class FieldShape(Enum):
     CONE = 0
     RECTANGLE = 1
@@ -22,6 +26,7 @@ class DType(Enum):
     UINT64 = 9
     UINT32 = 10
     BYTE = 11
+    FLOAT16 = 12
 
 
 class FieldType(Enum):
@@ -280,6 +285,11 @@ class Voxel(object):
 class Float32Voxel(Voxel):
     def get_data(self) -> float: ...
     def __eq__(self, value: "Float32Voxel") -> bool: ...
+
+
+class Float16Voxel(Voxel):
+    def get_data(self) -> float: ...
+    def set_data(self, value: float) -> None: ...
 
 
 class SCharVoxel(Voxel):
