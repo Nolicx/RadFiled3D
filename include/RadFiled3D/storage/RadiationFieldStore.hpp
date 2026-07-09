@@ -7,6 +7,7 @@
 #include "RadFiled3D/RadiationField.hpp"
 #include "RadFiled3D/storage/Types.hpp"
 #include <utility>
+#include <type_traits>
 #include <RadFiled3D/storage/FieldAccessor.hpp>
 #include <RadFiled3D/storage/MetadataSerializer.hpp>
 #include <RadFiled3D/storage/MetadataAccessor.hpp>
@@ -108,13 +109,29 @@ namespace RadFiled3D {
 				case FieldJoinMode::Multiply:
 					return [](const dtype& a, const dtype& b) { return a * b; };
 				case FieldJoinMode::AddWeighted:
-					return [ratio](const dtype& a, const dtype& b) {
-						dtype a1 = (a * (1.f - ratio));
-						dtype b1 = (b * ratio);
-						dtype c = a1 + b1;
-						return static_cast<dtype>(c);
-					};
-					//return [ratio](const dtype& a, const dtype& b) { return static_cast<dtype>((a * (1.f - ratio)) + (b * ratio)); };
+					if constexpr (std::is_base_of_v<IVoxel, dtype>) {
+						// View voxels (Hist/AngularResolved) share their data pointer on copy, so the
+						// (b * ratio) temporary would scale the SOURCE field in place. Blend element-wise
+						// into the target and leave b untouched.
+						return [ratio](const dtype& a, const dtype& b) {
+							if (a.get_bytes() != b.get_bytes())
+								throw RadiationFieldStoreException("Voxel data size mismatch in AddWeighted join");
+							scalarT* av = (scalarT*)a.get_raw();
+							const scalarT* bv = (const scalarT*)b.get_raw();
+							const size_t n = a.get_bytes() / sizeof(scalarT);
+							for (size_t i = 0; i < n; i++)
+								av[i] = av[i] * (1.f - ratio) + bv[i] * ratio;
+							return a;
+						};
+					}
+					else {
+						return [ratio](const dtype& a, const dtype& b) {
+							dtype a1 = (a * (1.f - ratio));
+							dtype b1 = (b * ratio);
+							dtype c = a1 + b1;
+							return static_cast<dtype>(c);
+						};
+					}
 				default:
 					throw RadiationFieldStoreException("Unknown join mode");
 				}

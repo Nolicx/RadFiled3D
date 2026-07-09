@@ -267,6 +267,10 @@ void RadFiled3D::Storage::V1::FileParser::initialize(std::istream& buffer)
 		channel_pos += channel_header.channel_bytes + sizeof(FiledTypes::V1::ChannelHeader);
 		buffer.seekg(this->getFieldDataOffset() + channel_pos, std::ios::beg);
 	}
+	// The loop terminates by reading at EOF, which sets failbit alongside eofbit. seekg cannot
+	// recover a failed stream, so any later access* call reusing this stream would silently read
+	// nothing into a default-initialized header (bytes_per_element = 0 -> division crash).
+	buffer.clear();
 }
 
 IVoxel* RadFiled3D::Storage::V1::FileParser::createVoxelFromBuffer(char* data_buffer, Typing::DType dtype, const char* voxel_header_data) const

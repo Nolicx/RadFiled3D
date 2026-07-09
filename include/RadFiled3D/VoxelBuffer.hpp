@@ -469,6 +469,12 @@ namespace RadFiled3D {
 			VoxelT* this_data = (VoxelT*)found->second.voxels;
 			VoxelT* other_data = (VoxelT*)other_layer->second.voxels;
 
+			// bytes_per_data_element is per-element and identical for any bin count, so compare the
+			// per-voxel data size too: merging e.g. 150-bin into 100-bin histograms would read past
+			// the other buffer's allocation.
+			if (this->voxel_count > 0 && this_data->get_bytes() != other_data->get_bytes())
+				throw VoxelBufferException("Layer: '" + layer_name + "' has different per-voxel data sizes");
+
 			for (size_t i = 0; i < this->voxel_count; i++) {
 				this_data[i] = merge_function(this_data[i], other_data[i]);
 			}

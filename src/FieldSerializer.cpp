@@ -232,6 +232,8 @@ VoxelLayer* Storage::V1::BinayFieldBlockHandler::deserializeLayerFromStream(std:
 
 	FiledTypes::V1::VoxelGridLayerHeader layer_desc;
 	buffer.read((char*)&layer_desc, sizeof(FiledTypes::V1::VoxelGridLayerHeader));
+	if (!buffer.good() || layer_desc.bytes_per_element == 0)
+		throw std::runtime_error("Failed to read a valid layer header from the stream");
 	size_t consumed = sizeof(FiledTypes::V1::VoxelGridLayerHeader);
 
 	std::vector<char> header_data;
