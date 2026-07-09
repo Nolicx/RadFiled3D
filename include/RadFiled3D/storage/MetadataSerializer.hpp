@@ -6,6 +6,7 @@ namespace RadFiled3D {
 	namespace Storage {
 		class MetadataSerializer {
 		public:
+			virtual ~MetadataSerializer() = default;
 			virtual void serializeMetadata(std::ostream& buffer, std::shared_ptr<RadFiled3D::Storage::RadiationFieldMetadata> metadata) const = 0;
 		};
 

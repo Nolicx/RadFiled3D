@@ -75,6 +75,12 @@ namespace RadFiled3D {
 		*/
 		virtual void init_from_header(const void* header) = 0;
 
+		// Voxels have no virtual destructor on purpose: they must stay trivially destructible so a
+		// VoxelBuffer can hold them in char* arrays and free them with delete[] (char*). A heap-allocated
+		// voxel handed out as a base pointer (e.g. by FieldAccessor) is therefore freed through this
+		// virtual override, which deletes at the concrete type, instead of `delete base_ptr`.
+		virtual void selfDestruct() { delete this; }
+
 		//virtual ~IVoxel() {}
 	};
 
@@ -265,6 +271,8 @@ namespace RadFiled3D {
 		virtual void set_data(void* data) override {
 			this->physical_data = *(T*)data;
 		}
+
+		virtual void selfDestruct() override { delete this; }
 	};
 
 	/** A HistogramVoxel is a Voxel that contains a histogram of scalar values. It is a simple wrapper around a buffer of values, and is used to
@@ -609,6 +617,8 @@ namespace RadFiled3D {
 				delete[] this->data;
 		}
 
+		virtual void selfDestruct() override { delete this; }
+
 		virtual void init_from_header(const void* header) override {
 			this->histogram_definition = *(HistogramDefinition*)header;
 			if (this->data != nullptr) {
@@ -946,6 +956,8 @@ namespace RadFiled3D {
 			if (this->data != nullptr)
 				delete[] this->data;
 		}
+
+		virtual void selfDestruct() override { delete this; }
 
 		virtual void init_from_header(const void* header) override {
 			this->angular_definition = *(AngularDefinition*)header;

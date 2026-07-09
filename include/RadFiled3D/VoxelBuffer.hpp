@@ -194,8 +194,7 @@ namespace RadFiled3D {
 		*/
 		VoxelBuffer(size_t voxel_count);
 
-		/** Destructor */
-		~VoxelBuffer();
+		virtual ~VoxelBuffer();
 
 		/** Adds a layer to the voxel buffer.
 		* @param name The name of the layer

@@ -29,7 +29,7 @@ std::shared_ptr<VoxelCollection> RadFiled3D::Dataset::VoxelCollectionAccessor::a
 					if (voxel == nullptr) {
 						throw std::runtime_error("Failed to access voxel data for channel: " + channel + ", layer: " + layer);
 					}
-					layer_data.voxels[voxelsCount + inner_voxels_count] = std::shared_ptr<IVoxel>(voxel);
+					layer_data.voxels[voxelsCount + inner_voxels_count] = std::shared_ptr<IVoxel>(voxel, [](IVoxel* p) { p->selfDestruct(); });
 					inner_voxels_count++;
 				}
 				buffer.seekg(0, std::ios::beg); // Reset the buffer position for the next channel/layer

@@ -470,6 +470,66 @@ namespace {
 		}
 	}
 
+	// Round-trips a field whose scalar-float, glm::vec3 and histogram layers all carry distinct,
+	// non-default per-voxel values, then reloads and checks every value survived. The existing Store/
+	// Load/LoadHistogram tests only assert layer layout and default contents; this covers the
+	// create -> modify -> store -> load path that the simulator depends on for its recorded values.
+	// (Angular-resolved / spherical voxels are exercised by SphericalTest, so they are omitted here.)
+	TEST(Storage, LoadModifiedLayers) {
+		std::shared_ptr<CartesianRadiationField> field = std::make_shared<CartesianRadiationField>(glm::vec3(1.f), glm::vec3(0.1f));
+		std::shared_ptr<VoxelGridBuffer> channel = std::static_pointer_cast<VoxelGridBuffer>(field->add_channel("mixed"));
+
+		channel->add_layer<float>("doserate", 0.f, "Gy/s");
+		channel->add_layer<glm::vec3>("dirs", glm::vec3(0.f), "normalized direction");
+		channel->add_custom_layer<HistogramVoxel<float>>("spectra", HistogramVoxel<float>(16, 5.f, nullptr), 0.f, "keV");
+
+		// Write distinct values into two interior voxels so per-voxel independence is covered too.
+		channel->get_voxel<ScalarVoxel<float>>("doserate", 2, 3, 4) = 12.5f;
+		channel->get_voxel<ScalarVoxel<glm::vec3>>("dirs", 2, 3, 4).get_data() = glm::vec3(0.1f, 0.2f, 0.3f);
+		HistogramVoxel<float>& hist = channel->get_voxel<HistogramVoxel<float>>("spectra", 2, 3, 4);
+		for (size_t i = 0; i < hist.get_bins(); i++)
+			hist.get_histogram()[i] = static_cast<float>(i);
+
+		channel->get_voxel<ScalarVoxel<float>>("doserate", 7, 1, 8) = -3.5f;
+		channel->get_voxel<ScalarVoxel<glm::vec3>>("dirs", 7, 1, 8).get_data() = glm::vec3(1.f, -2.f, 4.f);
+
+		std::shared_ptr<RadFiled3D::Storage::V1::RadiationFieldMetadata> metadata = std::make_shared<RadFiled3D::Storage::V1::RadiationFieldMetadata>(
+			RadFiled3D::Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Simulation(
+				100, "geom", "FTFP_BERT",
+				RadFiled3D::Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Simulation::XRayTube(
+					glm::vec3(1.f, 0.f, 0.f), glm::vec3(0.f, 0.f, 0.f), 100.f, "XRayTube")),
+			RadFiled3D::Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Software("test", "1.0", "repo", "commit"));
+
+		EXPECT_NO_THROW(FieldStore::store(field, std::static_pointer_cast<RadFiled3D::Storage::RadiationFieldMetadata>(metadata), "test05.rf3", StoreVersion::V1));
+
+		std::shared_ptr<CartesianRadiationField> field2 = std::static_pointer_cast<CartesianRadiationField>(FieldStore::load("test05.rf3"));
+		ASSERT_NE(field2, nullptr);
+		EXPECT_EQ(field2->get_voxel_counts(), glm::uvec3(10));
+
+		std::shared_ptr<VoxelGridBuffer> channel2 = std::static_pointer_cast<VoxelGridBuffer>(field2->get_channel("mixed"));
+		EXPECT_EQ(channel2->get_layers().size(), 3);
+		EXPECT_EQ(channel2->get_layer_unit("doserate"), "Gy/s");
+		EXPECT_EQ(channel2->get_layer_unit("dirs"), "normalized direction");
+
+		// Scalar float + vec3 survived with their exact per-voxel values.
+		EXPECT_EQ(channel2->get_voxel<ScalarVoxel<float>>("doserate", 2, 3, 4).get_data(), 12.5f);
+		EXPECT_EQ(channel2->get_voxel<ScalarVoxel<glm::vec3>>("dirs", 2, 3, 4).get_data(), glm::vec3(0.1f, 0.2f, 0.3f));
+		EXPECT_EQ(channel2->get_voxel<ScalarVoxel<float>>("doserate", 7, 1, 8).get_data(), -3.5f);
+		EXPECT_EQ(channel2->get_voxel<ScalarVoxel<glm::vec3>>("dirs", 7, 1, 8).get_data(), glm::vec3(1.f, -2.f, 4.f));
+
+		// Histogram layout + per-bin contents survived.
+		HistogramVoxel<float>& hist2 = channel2->get_voxel<HistogramVoxel<float>>("spectra", 2, 3, 4);
+		EXPECT_EQ(hist2.get_bins(), 16);
+		EXPECT_EQ(hist2.get_histogram_bin_width(), 5.f);
+		for (size_t i = 0; i < hist2.get_bins(); i++)
+			EXPECT_EQ(hist2.get_histogram()[i], static_cast<float>(i));
+
+		// An untouched voxel must round-trip as the layer default.
+		EXPECT_EQ(channel2->get_voxel<ScalarVoxel<float>>("doserate", 0, 0, 0).get_data(), 0.f);
+
+		std::remove("test05.rf3");
+	}
+
 	TEST(Storage, MetadataHists) {
 		std::shared_ptr<RadFiled3D::Storage::V1::RadiationFieldMetadata> metadata = std::make_shared<RadFiled3D::Storage::V1::RadiationFieldMetadata>(
 			RadFiled3D::Storage::FiledTypes::V1::RadiationFieldMetadataHeader::Simulation(
@@ -553,7 +613,10 @@ namespace {
 		EXPECT_NO_THROW(FieldStore::join(field2, std::static_pointer_cast<RadFiled3D::Storage::RadiationFieldMetadata>(metadata), "test04.rf3", FieldJoinMode::Add));
 
 		metadata = std::dynamic_pointer_cast<RadFiled3D::Storage::V1::RadiationFieldMetadata>(FieldStore::load_metadata("test04.rf3"));
-		EXPECT_EQ(metadata->get_header().simulation.primary_particle_count, 200);
+		// primary_particle_count is a uint64_t inside a #pragma pack(4) header, so it can sit at a
+		// 4-byte-aligned offset. Read it into an aligned temporary before comparing: binding EXPECT_EQ's
+		// const uint64_t& straight to the packed field is a misaligned reference (UBSan alignment).
+		EXPECT_EQ(static_cast<uint64_t>(metadata->get_header().simulation.primary_particle_count), 200u);
 		EXPECT_EQ(metadata->get_header().simulation.tube.max_energy_eV, 100.f);
 		EXPECT_EQ(metadata->get_header().simulation.tube.radiation_direction, glm::vec3(1.f, 0.f, 0.f));
 		EXPECT_EQ(metadata->get_header().simulation.tube.radiation_origin, glm::vec3(0.f, 0.f, 0.f));
@@ -592,7 +655,8 @@ namespace {
 
 		std::shared_ptr<CartesianRadiationField> field4 = std::static_pointer_cast<CartesianRadiationField>(FieldStore::load("test04.rf3"));
 		metadata = std::dynamic_pointer_cast<RadFiled3D::Storage::V1::RadiationFieldMetadata>(FieldStore::load_metadata("test04.rf3"));
-		EXPECT_EQ(metadata->get_header().simulation.primary_particle_count, 300);
+		// packed uint64_t (see the note above): compare via an aligned temporary, not a reference bind.
+		EXPECT_EQ(static_cast<uint64_t>(metadata->get_header().simulation.primary_particle_count), 300u);
 		EXPECT_EQ(metadata->get_header().simulation.tube.max_energy_eV, 100.f);
 		EXPECT_EQ(metadata->get_header().simulation.tube.radiation_direction, glm::vec3(1.f, 0.f, 0.f));
 		EXPECT_EQ(metadata->get_header().simulation.tube.radiation_origin, glm::vec3(0.f, 0.f, 0.f));

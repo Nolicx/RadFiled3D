@@ -11,6 +11,7 @@ namespace RadFiled3D {
 	namespace Storage {
 		class BinayFieldBlockHandler {
 		public:
+			virtual ~BinayFieldBlockHandler() = default;
 			/** Serializes a radiation field to a binary string
 			* @param field The radiation field
 			* @return The binary string

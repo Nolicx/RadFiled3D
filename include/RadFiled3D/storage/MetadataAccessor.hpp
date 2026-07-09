@@ -6,6 +6,7 @@ namespace RadFiled3D {
 	namespace Storage {
 		class MetadataAccessor {
 		public:
+			virtual ~MetadataAccessor() = default;
 			virtual std::shared_ptr<RadFiled3D::Storage::RadiationFieldMetadata> accessMetadata(std::istream& buffer, bool quick_peek_only = false) const = 0;
 			virtual size_t get_metadata_size(std::istream& stream) const = 0;
 		};

@@ -190,7 +190,7 @@ namespace RadFiled3D {
 			template<typename dtype, typename VoxelT = ScalarVoxel<dtype>>
 			std::shared_ptr<VoxelT> accessVoxelFlat(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, size_t voxel_idx) const {
 				IVoxel* voxel = this->accessVoxelRawFlat(buffer, channel_name, layer_name, voxel_idx);
-				return std::shared_ptr<VoxelT>((VoxelT*)voxel);
+				return std::shared_ptr<VoxelT>((VoxelT*)voxel, [](VoxelT* p) { p->selfDestruct(); });
 			};
 
 			template<typename dtype, typename VoxelT = ScalarVoxel<dtype>>
@@ -198,7 +198,7 @@ namespace RadFiled3D {
 				std::vector<IVoxel*> voxels_raw = this->accessVoxelsRawFlat(buffer, channel_name, layer_name, voxel_indices);
 				std::vector<std::shared_ptr<VoxelT>> voxels(voxels_raw.size());
 				for (size_t i = 0; i < voxels_raw.size(); ++i) {
-					voxels[i] = std::shared_ptr<VoxelT>((VoxelT*)voxels_raw[i]);
+					voxels[i] = std::shared_ptr<VoxelT>((VoxelT*)voxels_raw[i], [](VoxelT* p) { p->selfDestruct(); });
 				}
 				return voxels;
 			};
@@ -258,13 +258,13 @@ namespace RadFiled3D {
 			template<typename dtype, typename VoxelT = ScalarVoxel<dtype>>
 			std::shared_ptr<VoxelT> accessVoxel(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const glm::uvec3& voxel_idx) const {
 				IVoxel* voxel = this->accessVoxelRaw(buffer, channel_name, layer_name, voxel_idx);
-				return std::shared_ptr<VoxelT>((VoxelT*)voxel);
+				return std::shared_ptr<VoxelT>((VoxelT*)voxel, [](VoxelT* p) { p->selfDestruct(); });
 			};
 
 			template<typename dtype, typename VoxelT = ScalarVoxel<dtype>>
 			std::shared_ptr<VoxelT> accessVoxelByCoord(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const glm::vec3& voxel_pos) const {
 				auto voxel = this->accessVoxelRawByCoord(buffer, channel_name, layer_name, voxel_pos);
-				return std::shared_ptr<VoxelT>((VoxelT*)voxel);
+				return std::shared_ptr<VoxelT>((VoxelT*)voxel, [](VoxelT* p) { p->selfDestruct(); });
 			};
 
 			virtual SerializationData* generateSerializationBuffer() const override {
@@ -309,13 +309,13 @@ namespace RadFiled3D {
 			template<typename dtype, typename VoxelT = ScalarVoxel<dtype>>
 			std::shared_ptr<VoxelT> accessVoxel(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const glm::uvec2& voxel_idx) const {
 				IVoxel* voxel = this->accessVoxelRaw(buffer, channel_name, layer_name, voxel_idx);
-				return std::shared_ptr<VoxelT>((VoxelT*)voxel);
+				return std::shared_ptr<VoxelT>((VoxelT*)voxel, [](VoxelT* p) { p->selfDestruct(); });
 			};
 
 			template<typename dtype, typename VoxelT = ScalarVoxel<dtype>>
 			std::shared_ptr<VoxelT> accessVoxelByCoord(std::istream& buffer, const std::string& channel_name, const std::string& layer_name, const glm::vec2& voxel_pos) const {
 				auto voxel = this->accessVoxelRawByCoord(buffer, channel_name, layer_name, voxel_pos);
-				return std::shared_ptr<VoxelT>((VoxelT*)voxel);
+				return std::shared_ptr<VoxelT>((VoxelT*)voxel, [](VoxelT* p) { p->selfDestruct(); });
 			};
 
 			virtual SerializationData* generateSerializationBuffer() const override {
