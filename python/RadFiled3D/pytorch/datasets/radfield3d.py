@@ -25,7 +25,7 @@ class RadField3DDataset(CartesianFieldDataset):
     """
     GROUND_TRUTH_CHANNELS = ["scatter_field", "direct_beam"]
     GROUND_TRUTH_LAYERS = ["spectrum", "flux", "error"]
-    JOINED_CHANNEL = "joined_beam"
+    JOINED_CHANNEL = "radiation"
 
     def __init__(self, file_paths: list[str] = None, zip_file: str = None, data_processings: list[DataProcessing] = None, joined_channels: Union[bool, None] = None):
         super().__init__(file_paths=file_paths, zip_file=zip_file, metadata_load_mode=MetadataLoadMode.FULL)
