@@ -18,11 +18,28 @@
 #include "psapi.h"
 #else
 #include "sys/types.h"
-#include "sys/sysinfo.h"
+#include <unistd.h>
 #endif
 
 using namespace RadFiled3D;
 using namespace RadFiled3D::Storage;
+
+// Resident memory of THIS process in bytes. The Linux path reads /proc/self/statm (field 2 = resident
+// pages) instead of sysinfo(), which reports whole-machine RAM — that is dominated by other processes on
+// shared CI runners and made the leak check below flaky (it could grow by hundreds of MB with no leak here).
+static unsigned long long getProcessMemoryBytes() {
+#ifdef _WIN32
+	PROCESS_MEMORY_COUNTERS_EX pmc;
+	GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(pmc));
+	return static_cast<unsigned long long>(pmc.PrivateUsage);
+#else
+	std::ifstream statm("/proc/self/statm");
+	unsigned long long total_pages = 0, resident_pages = 0;
+	if (statm >> total_pages >> resident_pages)
+		return resident_pages * static_cast<unsigned long long>(sysconf(_SC_PAGESIZE));
+	return 0;
+#endif
+}
 
 namespace {
 	class Storage : public ::testing::Test {
@@ -344,20 +361,8 @@ namespace {
 
 		auto channel1 = field->get_channel("test_channel");
 
-		// get memory consuption of this process under windows and linux
-		unsigned long long totalVirtualUsed_begining = 0;
-#ifdef _WIN32
-		PROCESS_MEMORY_COUNTERS_EX pmc;
-		GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(pmc));
-		totalVirtualUsed_begining = static_cast<unsigned long long>(pmc.PrivateUsage);
-#else
-		struct sysinfo memInfo;
-		sysinfo(&memInfo);
-
-		totalVirtualUsed_begining = static_cast<unsigned long long>(memInfo.totalram - memInfo.freeram);
-		totalVirtualUsed_begining += static_cast<unsigned long long>(memInfo.totalswap - memInfo.freeswap);
-		totalVirtualUsed_begining *= static_cast<unsigned long long>(memInfo.mem_unit);
-#endif
+		// memory consumption of this process (resident set size); see getProcessMemoryBytes
+		unsigned long long totalVirtualUsed_begining = getProcessMemoryBytes();
 
 		auto start_time = std::chrono::high_resolution_clock::now();
 		for (size_t y = 0; y < 100; y++) {
@@ -374,17 +379,7 @@ namespace {
 		auto vx_duration = duration / (field->get_voxel_counts().x * field->get_voxel_counts().y * field->get_voxel_counts().z * 100);
 		std::cout << "Access duration per voxel: " << vx_duration << "ms" << std::endl;
 
-		unsigned long long totalVirtualUsed_end = 0;
-#ifdef _WIN32
-		GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(pmc));
-		totalVirtualUsed_end = static_cast<unsigned long long>(pmc.PrivateUsage);
-#else
-		sysinfo(&memInfo);
-
-		totalVirtualUsed_end = static_cast<unsigned long long>(memInfo.totalram - memInfo.freeram);
-		totalVirtualUsed_end += static_cast<unsigned long long>(memInfo.totalswap - memInfo.freeswap);
-		totalVirtualUsed_end *= static_cast<unsigned long long>(memInfo.mem_unit);
-#endif
+		unsigned long long totalVirtualUsed_end = getProcessMemoryBytes();
 
 		std::cout << "Memory used in the begining: " << totalVirtualUsed_begining << std::endl;
 		std::cout << "Memory used in the end: " << totalVirtualUsed_end << std::endl;
