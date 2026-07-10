@@ -24,6 +24,15 @@
 using namespace RadFiled3D;
 using namespace RadFiled3D::Storage;
 
+// Detect AddressSanitizer (GCC defines __SANITIZE_ADDRESS__; Clang exposes it via __has_feature).
+#if defined(__SANITIZE_ADDRESS__)
+#  define RF3D_UNDER_ASAN 1
+#elif defined(__has_feature)
+#  if __has_feature(address_sanitizer)
+#    define RF3D_UNDER_ASAN 1
+#  endif
+#endif
+
 // Resident memory of THIS process in bytes. The Linux path reads /proc/self/statm (field 2 = resident
 // pages) instead of sysinfo(), which reports whole-machine RAM — that is dominated by other processes on
 // shared CI runners and made the leak check below flaky (it could grow by hundreds of MB with no leak here).
@@ -387,7 +396,11 @@ namespace {
 
 		std::cout << "Memory used per field: " << memoryUsed / 1000 << std::endl;
 
+#ifdef RF3D_UNDER_ASAN
+		GTEST_SKIP() << "memory-growth bound is meaningless under AddressSanitizer (footprint inflated by design)";
+#else
 		EXPECT_TRUE(memoryUsed / 1000 < sizeof(ScalarVoxel<float>) * 2 + 1);
+#endif
 	}
 
 	TEST(Serialization, Self) {
