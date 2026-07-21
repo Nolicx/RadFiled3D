@@ -50,26 +50,32 @@ if(RS_Build_PyBindings)
   # Prefer a pybind11 provided by the build environment (scikit-build-core adds
   # the build-requirement's CMake config to CMAKE_PREFIX_PATH). Fall back to
   # fetching it for standalone CMake builds without pybind11 installed.
-  find_package(pybind11 CONFIG QUIET)
-  if(pybind11_FOUND)
-    message(STATUS "Found pybind11 via find_package: ${pybind11_VERSION}")
-  elseif(NOT DEFINED fetch_pybind_POPULATED)
-    message(STATUS "pybind11 not found, fetching via FetchContent...")
-    FetchContent_Declare(
-      fetch_pybind
-      GIT_REPOSITORY https://github.com/pybind/pybind11.git
-      GIT_TAG        v3.0.4 # v2.13.6
-    )
-    FetchContent_GetProperties(fetch_pybind)
-    if(NOT fetch_pybind_POPULATED)
-      FetchContent_Populate(fetch_pybind)
-      add_subdirectory(
-        ${fetch_pybind_SOURCE_DIR}
-        ${fetch_pybind_BINARY_DIR}
-      )
-    endif()
+  # If pybind11 targets already exist (e.g. added by a parent CMake project),
+  # skip entirely to avoid duplicate target errors.
+  if(TARGET pybind11::pybind11)
+    message(STATUS "pybind11 targets already defined, skipping find/fetch.")
   else()
-    message(STATUS "Pybind11 was already fetched at: ${fetch_pybind_SOURCE_DIR}.")
+    find_package(pybind11 CONFIG QUIET)
+    if(pybind11_FOUND)
+      message(STATUS "Found pybind11 via find_package: ${pybind11_VERSION}")
+    elseif(NOT DEFINED fetch_pybind_POPULATED)
+      message(STATUS "pybind11 not found, fetching via FetchContent...")
+      FetchContent_Declare(
+        fetch_pybind
+        GIT_REPOSITORY https://github.com/pybind/pybind11.git
+        GIT_TAG        v3.0.4 # v2.13.6
+      )
+      FetchContent_GetProperties(fetch_pybind)
+      if(NOT fetch_pybind_POPULATED)
+        FetchContent_Populate(fetch_pybind)
+        add_subdirectory(
+          ${fetch_pybind_SOURCE_DIR}
+          ${fetch_pybind_BINARY_DIR}
+        )
+      endif()
+    else()
+      message(STATUS "Pybind11 was already fetched at: ${fetch_pybind_SOURCE_DIR}.")
+    endif()
   endif()
 endif(RS_Build_PyBindings)
 
