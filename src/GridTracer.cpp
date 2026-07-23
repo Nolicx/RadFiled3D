@@ -335,16 +335,16 @@ std::vector<size_t> DDAGridTracer::trace(const glm::vec3& p1, const glm::vec3& p
     return voxels;
 }
 
-std::vector<VoxelHit> DDAGridTracer::trace_with_lengths(
-    const glm::vec3& p1, const glm::vec3& p2
+void DDAGridTracer::trace_with_lengths(
+    const glm::vec3& p1, const glm::vec3& p2, std::vector<VoxelHit>& outHits
 ) {
-    std::vector<VoxelHit> hits;
+    outHits.clear();
 
     // Calculate direction and length of the track
     glm::vec3 track = p2 - p1;
     float trackLen = glm::length(track);
     if (trackLen <= 0.f) {
-        return hits;
+        return;
     }
 
 	glm::vec3 trackDir = track / trackLen;
@@ -392,7 +392,7 @@ std::vector<VoxelHit> DDAGridTracer::trace_with_lengths(
         float pathLen = tCurrent - tPrev;
         if (pathLen > 0.f) {
             size_t voxelIdxFlat = this->buffer.get_voxel_idx(currentVoxel.x, currentVoxel.y, currentVoxel.z);
-			hits.push_back({voxelIdxFlat, pathLen});
+			outHits.push_back({voxelIdxFlat, pathLen});
         }
 
         if (tCurrent >= trackLen
@@ -406,6 +406,4 @@ std::vector<VoxelHit> DDAGridTracer::trace_with_lengths(
         currentVoxel[stepAxis] += stepDir[stepAxis];
         tPrev = tCurrent;
     }
-
-    return hits;
 }
