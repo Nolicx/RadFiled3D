@@ -33,7 +33,7 @@ namespace RadFiled3D {
 	class IGridTracerWithLengths {
 	public:
 		virtual ~IGridTracerWithLengths() = default;
-		virtual std::vector<VoxelHit> trace_with_lengths(const glm::vec3& p1, const glm::vec3& p2) = 0;
+		virtual void trace_with_lengths(const glm::vec3& p1, const glm::vec3& p2, std::vector<VoxelHit>& outHits) = 0;
 	};
 
 
@@ -107,7 +107,7 @@ namespace RadFiled3D {
 		DDAGridTracer(VoxelGridBuffer& buffer) : GridTracer(buffer) {}
 
 		std::vector<size_t> trace(const glm::vec3& p1, const glm::vec3& p2) override;
-    	std::vector<VoxelHit> trace_with_lengths(const glm::vec3& p1, const glm::vec3& p2) override;
+    	void trace_with_lengths(const glm::vec3& p1, const glm::vec3& p2, std::vector<VoxelHit>& outHits) override;
 	};
 	
 }
