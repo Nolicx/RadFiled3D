@@ -8,6 +8,7 @@
 #include "RadFiled3D/storage/RadiationFieldStore.hpp"
 #include <istream>
 #include <fstream>
+#include <cstring>
 #include <memory>
 #include "RadFiled3D/storage/Registry.hpp"
 
@@ -49,6 +50,14 @@ std::vector<char> RadFiled3D::Storage::V1::FileParser::SerializeChannelsLayersOf
 std::map<std::string, AccessorTypes::ChannelStructure> RadFiled3D::Storage::V1::FileParser::DeserializeChannelsLayersOffsets(const std::vector<char>& data) {
 	std::map<std::string, AccessorTypes::ChannelStructure> channels_layers_offsets = std::map<std::string, AccessorTypes::ChannelStructure>();
 	size_t offset = 0;
+	// The channel/layer records are variable-length (a name string precedes each size_t), so the size_t
+	// fields land at arbitrary byte offsets. Read them through memcpy instead of *(size_t*)ptr, which is
+	// a misaligned load (undefined behaviour, flagged by UBSan).
+	const auto read_size_t = [&data](size_t at) -> size_t {
+		size_t value;
+		std::memcpy(&value, data.data() + at, sizeof(value));
+		return value;
+	};
 	const size_t min_bytes_per_channel = sizeof(size_t) * 3 + sizeof(char);
 	const size_t min_remaining_size = (data.size() >= min_bytes_per_channel) ? data.size() - min_bytes_per_channel : 0;
 	while (offset < min_remaining_size) {
@@ -56,26 +65,27 @@ std::map<std::string, AccessorTypes::ChannelStructure> RadFiled3D::Storage::V1::
 		if (offset + channel_name.size() + 1 + sizeof(size_t) * 3 > min_remaining_size)
 			break;
 		offset += channel_name.size() + 1;
-		size_t channel_offset = *(size_t*)(data.data() + offset);
+		size_t channel_offset = read_size_t(offset);
 		offset += sizeof(size_t);
-		size_t channel_size = *(size_t*)(data.data() + offset);
+		size_t channel_size = read_size_t(offset);
 		offset += sizeof(size_t);
-		size_t layer_count = *(size_t*)(data.data() + offset);
+		size_t layer_count = read_size_t(offset);
 		offset += sizeof(size_t);
 
 		std::map<std::string, AccessorTypes::TypedMemoryBlockDefinition> layers;
 		while (offset < data.size() && layers.size() < layer_count) {
 			std::string layer_name = std::string(data.data() + offset);
 			offset += layer_name.size() + 1;
-			size_t layer_offset = *(size_t*)(data.data() + offset);
+			size_t layer_offset = read_size_t(offset);
 			offset += sizeof(size_t);
-			size_t layer_size = *(size_t*)(data.data() + offset);
+			size_t layer_size = read_size_t(offset);
 			offset += sizeof(size_t);
-			Typing::DType dtype = *(Typing::DType*)(data.data() + offset);
+			Typing::DType dtype;
+			std::memcpy(&dtype, data.data() + offset, sizeof(dtype));
 			offset += sizeof(Typing::DType);
-			size_t elements_per_voxel = *(size_t*)(data.data() + offset);
+			size_t elements_per_voxel = read_size_t(offset);
 			offset += sizeof(size_t);
-			size_t voxel_header_data_size = *(size_t*)(data.data() + offset);
+			size_t voxel_header_data_size = read_size_t(offset);
 			offset += sizeof(size_t);
 
 			AccessorTypes::TypedMemoryBlockDefinition layer_block(layer_offset, layer_size, dtype, elements_per_voxel);
@@ -267,6 +277,10 @@ void RadFiled3D::Storage::V1::FileParser::initialize(std::istream& buffer)
 		channel_pos += channel_header.channel_bytes + sizeof(FiledTypes::V1::ChannelHeader);
 		buffer.seekg(this->getFieldDataOffset() + channel_pos, std::ios::beg);
 	}
+	// The loop terminates by reading at EOF, which sets failbit alongside eofbit. seekg cannot
+	// recover a failed stream, so any later access* call reusing this stream would silently read
+	// nothing into a default-initialized header (bytes_per_element = 0 -> division crash).
+	buffer.clear();
 }
 
 IVoxel* RadFiled3D::Storage::V1::FileParser::createVoxelFromBuffer(char* data_buffer, Typing::DType dtype, const char* voxel_header_data) const

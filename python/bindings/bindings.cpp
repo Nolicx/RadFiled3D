@@ -359,12 +359,15 @@ py::array create_py_array_generic(const T *data, const glm::uvec3 &shape, std::s
         capsule = py::capsule(array_buffer, [](void *py_data)
                               { delete[] static_cast<T *>(py_data); });
     }
-    else
-    {
-        PyMemoryManager::register_memory_view(ptr, (void *)data);
-        capsule = py::capsule(data, [](void *py_data)
-                              { PyMemoryManager::unregister_memory_view(py_data); });
-        array_buffer = (void *)data;
+    else {
+        // Tie the parent buffer's lifetime to this ndarray by having the capsule own a copy of the
+        // parent shared_ptr. The previous PyMemoryManager keyed views by the raw data address, which
+        // aliases once a freed layer's heap address is reused by a later field: the ref-counts desync
+        // and the parent shared_ptr is released twice -> double free (glibc aborts a few fields in).
+        capsule = py::capsule(new std::shared_ptr<void>(ptr), [](void* p) {
+            delete static_cast<std::shared_ptr<void>*>(p);
+        });
+        array_buffer = (void*)data;
     }
 
     py::buffer_info info = py::buffer_info(
@@ -404,12 +407,15 @@ py::array create_py_array_generic(const T *data, size_t len, std::shared_ptr<voi
         capsule = py::capsule(array_buffer, [](void *py_data)
                               { delete[] static_cast<T *>(py_data); });
     }
-    else
-    {
-        PyMemoryManager::register_memory_view(ptr, (void *)data);
-        capsule = py::capsule(data, [](void *py_data)
-                              { PyMemoryManager::unregister_memory_view(py_data); });
-        array_buffer = (void *)data;
+    else {
+        // Tie the parent buffer's lifetime to this ndarray by having the capsule own a copy of the
+        // parent shared_ptr. The previous PyMemoryManager keyed views by the raw data address, which
+        // aliases once a freed layer's heap address is reused by a later field: the ref-counts desync
+        // and the parent shared_ptr is released twice -> double free (glibc aborts a few fields in).
+        capsule = py::capsule(new std::shared_ptr<void>(ptr), [](void* p) {
+            delete static_cast<std::shared_ptr<void>*>(p);
+        });
+        array_buffer = (void*)data;
     }
 
     py::buffer_info info = py::buffer_info(
@@ -528,12 +534,15 @@ py::array create_py_array_generic(const T *data, const glm::uvec2 &shape, std::s
         capsule = py::capsule(array_buffer, [](void *py_data)
                               { delete[] static_cast<T *>(py_data); });
     }
-    else
-    {
-        PyMemoryManager::register_memory_view(ptr, (void *)data);
-        capsule = py::capsule(data, [](void *py_data)
-                              { PyMemoryManager::unregister_memory_view(py_data); });
-        array_buffer = (void *)data;
+    else {
+        // Tie the parent buffer's lifetime to this ndarray by having the capsule own a copy of the
+        // parent shared_ptr. The previous PyMemoryManager keyed views by the raw data address, which
+        // aliases once a freed layer's heap address is reused by a later field: the ref-counts desync
+        // and the parent shared_ptr is released twice -> double free (glibc aborts a few fields in).
+        capsule = py::capsule(new std::shared_ptr<void>(ptr), [](void* p) {
+            delete static_cast<std::shared_ptr<void>*>(p);
+        });
+        array_buffer = (void*)data;
     }
 
     py::buffer_info info = py::buffer_info(
@@ -1717,8 +1726,10 @@ PYBIND11_MODULE(RadFiled3D, m)
                                 py::capsule free_buf(buf, [](void* p) { delete[] static_cast<float*>(p); });
                                 return py::array(py::array_t<float>(shape, strides, buf, free_buf));
                             }
-                            PyMemoryManager::register_memory_view(self, (void*)data);
-                            py::capsule cap(data, [](void* p) { PyMemoryManager::unregister_memory_view(p); });
+                            // Capsule owns a copy of the parent shared_ptr (see create_py_array_generic).
+                            py::capsule cap(new std::shared_ptr<void>(self), [](void* p) {
+                                delete static_cast<std::shared_ptr<void>*>(p);
+                            });
                             return py::array(py::array_t<float>(shape, strides, data, cap));
                         }
                     }

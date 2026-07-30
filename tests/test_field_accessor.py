@@ -418,3 +418,33 @@ def test_multi_voxel_accessing():
     for i in range(4, 7):
         assert layer1[i] == 3.0 + (i - 4)
         assert layer2[i] == 2.0
+
+
+def test_load_single_grid_layer_reuses_accessor_stream(tmp_path):
+    # Regression: FieldStore.load_single_grid_layer constructs the accessor and then reuses the
+    # SAME stream for accessLayer. FileParser::initialize() used to leave the stream with failbit
+    # set (its channel walk ends by reading at EOF), so the later header read silently produced a
+    # default-initialized header (bytes_per_element = 0) and the process died with SIGFPE.
+    field = CartesianRadiationField(vec3(1, 1, 1), vec3(0.1, 0.1, 0.1))
+    field.add_channel("channel1")
+    field.get_channel("channel1").add_layer("layer1", "unit1", DType.FLOAT32)
+    field.get_channel("channel1").add_histogram_layer("spectrum", 8, 0.5, "eV")
+    field.add_channel("channel2")
+    field.get_channel("channel2").add_layer("density", "rel", DType.BYTE)
+    field.get_channel("channel1").get_layer_as_ndarray("layer1")[:] = 7.0
+    field.get_channel("channel2").get_layer_as_ndarray("density")[2:5, 2:5, 2:5] = 42
+    path = str(tmp_path / "single_layer.rf3")
+    FieldStore.store(field, METADATA, path, StoreVersion.V1)
+
+    # later channel + non-float dtype exercises the offset walk past histogram header blocks
+    grid = FieldStore.load_single_grid_layer(path, "channel2", "density")
+    loaded = grid.get_as_ndarray()
+    expected = field.get_channel("channel2").get_layer_as_ndarray("density")
+    assert np.array_equal(loaded, expected)
+
+    grid1 = FieldStore.load_single_grid_layer(path, "channel1", "layer1")
+    assert float(grid1.get_as_ndarray().max()) == 7.0
+
+    with open(path, "rb") as f:
+        grid_buf = FieldStore.load_single_grid_layer_from_buffer(f.read(), "channel2", "density")
+    assert np.array_equal(grid_buf.get_as_ndarray(), expected)

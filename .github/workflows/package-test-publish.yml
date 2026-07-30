@@ -3,6 +3,41 @@ name: Python packaging testing
 on: [push]
 
 jobs:
+  memory-safety-linux:
+    name: C++ memory safety (ASan + UBSan)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Configure C++ tests with Address + UndefinedBehavior sanitizers
+      # RS_Build_PyBindings=OFF: build only the core library and its C++ gtest suite. An ASan-instrumented
+      # Python extension loaded by a stock CPython needs LD_PRELOAD gymnastics and trips interpreter-internal
+      # checks, so the pure C++ tests give the clean, high-signal memory-safety coverage.
+      # -fno-sanitize-recover=all makes a UBSan finding abort (non-zero exit) so it fails the job like ASan.
+      run: >
+        cmake -S . -B build-asan
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo
+        -DBUILD_TESTS=ON
+        -DRS_Build_PyBindings=OFF
+        -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g"
+        -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+    # MemoryTest is intentionally excluded: its 500-/1000-iteration create/store/load loops are slow under
+    # ASan, and the sanitizers surface any use-after-free / leak-shaped bug on the other suites without it.
+    - name: Build C++ tests
+      run: cmake --build build-asan --target basic_test tracing_test AccessorTest SphericalTest -j
+    - name: Run C++ tests under sanitizers
+      working-directory: build-asan
+      env:
+        # Leak detection off: gate on memory corruption (use-after-free, overflow, wrong-size/mismatched
+        # delete) and UB — the classes that crash — not on one-off allocations.
+        ASAN_OPTIONS: detect_leaks=0:abort_on_error=1:halt_on_error=1
+        UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+      run: |
+        set -e
+        for t in basic_test tracing_test AccessorTest SphericalTest; do
+          bin=$(find . -name "$t" -type f -perm -u+x | head -1)
+          echo "=== running $t ($bin) ==="
+          "$bin"
+        done
   build-source:
     runs-on: ubuntu-latest
     steps:

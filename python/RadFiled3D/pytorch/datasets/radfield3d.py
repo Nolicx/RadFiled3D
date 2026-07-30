@@ -2,7 +2,7 @@ from .cartesian import CartesianFieldDataset
 from RadFiled3D.RadFiled3D import CartesianRadiationField, VoxelCollectionRequest, VoxelCollection, VoxelCollectionAccessor, FieldShape, vec2
 from RadFiled3D.metadata.v1 import Metadata
 from .base import MetadataLoadMode
-from RadFiled3D.pytorch.types import RadiationField, TrainingInputData, DirectionalInput, RadiationFieldChannel, PositionalInput
+from RadFiled3D.pytorch.types import RadiationField, TrainingInputData, DirectionalInput, RadiationFieldChannel, PositionalInput, TranslationalInput
 from RadFiled3D.pytorch.helpers import RadiationFieldHelper
 import torch
 from torch import Tensor
@@ -25,12 +25,15 @@ class RadField3DDataset(CartesianFieldDataset):
     """
     GROUND_TRUTH_CHANNELS = ["scatter_field", "direct_beam"]
     GROUND_TRUTH_LAYERS = ["spectrum", "flux", "error"]
+    JOINED_CHANNEL = "radiation"
 
-    def __init__(self, file_paths: list[str] = None, zip_file: str = None, data_processings: list[DataProcessing] = None):
+    def __init__(self, file_paths: list[str] = None, zip_file: str = None, data_processings: list[DataProcessing] = None, joined_channels: Union[bool, None] = None):
         super().__init__(file_paths=file_paths, zip_file=zip_file, metadata_load_mode=MetadataLoadMode.FULL)
         self.data_processings = data_processings if data_processings is not None else []
         self._field_dimensions = None
         self._has_geometry = None
+        # None -> auto-detect from the stored channels; True/False -> forced.
+        self._joined_channels = joined_channels
 
     @property
     def field_dimensions(self) -> tuple[float, float, float]:
@@ -49,12 +52,37 @@ class RadField3DDataset(CartesianFieldDataset):
             self._has_geometry = self._get_field(0).has_channel("geometry")
         return self._has_geometry
 
+    @property
+    def joined_channels(self) -> bool:
+        """True if the dataset stores a single joined ground-truth channel, False if it stores the
+        separate scatter_field + direct_beam channels. Auto-detected from the field structure unless
+        set explicitly at construction (joined_channels=...)."""
+        if self._joined_channels is None:
+            names = self._get_field(0).get_channel_names()
+            self._joined_channels = not all(c in names for c in self.GROUND_TRUTH_CHANNELS)
+        return self._joined_channels
+
+    def _joined_channel_name(self) -> str:
+        names = [c for c in self._get_field(0).get_channel_names() if c != "geometry"]
+        if self.JOINED_CHANNEL in names:
+            return self.JOINED_CHANNEL
+        return names[0] if len(names) == 1 else self.JOINED_CHANNEL
+
     def _access_field_arrays(self, idx: int, channels: list[str], layers: list[str]) -> dict:
         if self.is_dataset_zipped:
             return self.field_accessor.access_field_arrays_from_buffer(self.load_file_buffer(idx), channels, layers, True)
         return self.field_accessor.access_field_arrays(self.file_paths[idx], channels, layers, True)
 
-    def _load_ground_truth(self, idx: int) -> RadiationField:
+    def _load_ground_truth(self, idx: int) -> Union[RadiationField, RadiationFieldChannel]:
+        if self.joined_channels:
+            channel = self._joined_channel_name()
+            arrays = self._access_field_arrays(idx, [channel], self.GROUND_TRUTH_LAYERS)
+            return RadiationFieldChannel(
+                spectrum=torch.from_numpy(arrays[channel]["spectrum"]),
+                flux=torch.from_numpy(arrays[channel]["flux"]),
+                error=torch.from_numpy(arrays[channel]["error"])
+            )
+
         arrays = self._access_field_arrays(idx, self.GROUND_TRUTH_CHANNELS, self.GROUND_TRUTH_LAYERS)
 
         def t(channel: str, layer: str) -> Tensor:
@@ -137,18 +165,26 @@ class RadField3DDataset(CartesianFieldDataset):
 
     def transform2training_input(self, field: CartesianRadiationField, metadata: Metadata) -> TrainingInputData:
         with torch.no_grad():
-            rad_field = RadiationField(
-                scatter_field=RadiationFieldChannel(
-                    spectrum=RadiationFieldHelper.load_tensor_from_field(field, "scatter_field", "spectrum"),
-                    flux=RadiationFieldHelper.load_tensor_from_field(field, "scatter_field", "flux"),
-                    error=RadiationFieldHelper.load_tensor_from_field(field, "scatter_field", "error")
-                ),
-                direct_beam=RadiationFieldChannel(
-                    spectrum=RadiationFieldHelper.load_tensor_from_field(field, "direct_beam", "spectrum"),
-                    flux=RadiationFieldHelper.load_tensor_from_field(field, "direct_beam", "flux"),
-                    error=RadiationFieldHelper.load_tensor_from_field(field, "direct_beam", "error")
+            if self.joined_channels:
+                channel = self._joined_channel_name()
+                rad_field = RadiationFieldChannel(
+                    spectrum=RadiationFieldHelper.load_tensor_from_field(field, channel, "spectrum"),
+                    flux=RadiationFieldHelper.load_tensor_from_field(field, channel, "flux"),
+                    error=RadiationFieldHelper.load_tensor_from_field(field, channel, "error")
                 )
-            )
+            else:
+                rad_field = RadiationField(
+                    scatter_field=RadiationFieldChannel(
+                        spectrum=RadiationFieldHelper.load_tensor_from_field(field, "scatter_field", "spectrum"),
+                        flux=RadiationFieldHelper.load_tensor_from_field(field, "scatter_field", "flux"),
+                        error=RadiationFieldHelper.load_tensor_from_field(field, "scatter_field", "error")
+                    ),
+                    direct_beam=RadiationFieldChannel(
+                        spectrum=RadiationFieldHelper.load_tensor_from_field(field, "direct_beam", "spectrum"),
+                        flux=RadiationFieldHelper.load_tensor_from_field(field, "direct_beam", "flux"),
+                        error=RadiationFieldHelper.load_tensor_from_field(field, "direct_beam", "error")
+                    )
+                )
             return TrainingInputData(input=self._build_input(metadata), ground_truth=rad_field)
         
     def apply_processings(self, input: TrainingInputData) -> TrainingInputData:
@@ -160,6 +196,35 @@ class RadField3DDataset(CartesianFieldDataset):
         for processing in self.data_processings:
             input = processing(input)
         return input
+
+
+class RadField3DTranslationDataset(RadField3DDataset):
+    """
+    A RadField3DDataset that also exposes the patient translation as part of the model input.
+
+    The translation is the value sampled during dataset generation and stored in each field's dynamic
+    metadata under 'patient_translation' (a vec3, in metres). This dataset returns a TranslationalInput
+    (a DirectionalInput extended with the translation vector) instead of a DirectionalInput. Use it for
+    datasets generated with patient translation enabled; the metadata key must be present.
+    """
+
+    def _build_input(self, metadata: Metadata) -> TranslationalInput:
+        base = super()._build_input(metadata)
+        translation = metadata.simulation.patient_translation
+        if translation is None:
+            raise ValueError(
+                "RadField3DTranslationDataset requires a 'patient_translation' entry in the field's "
+                "dynamic metadata (generate the dataset with patient translation enabled)."
+            )
+        return TranslationalInput(
+            direction=base.direction,
+            origin=base.origin,
+            spectrum=base.spectrum,
+            translation=torch.tensor([translation.x, translation.y, translation.z], dtype=torch.float32),
+            geometry=base.geometry,
+            beam_shape_type=base.beam_shape_type,
+            beam_shape_parameters=base.beam_shape_parameters,
+        )
 
 
 class RadField3DVoxelwiseDataset(RadField3DDataset):

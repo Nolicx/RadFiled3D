@@ -22,6 +22,16 @@ class DirectionalInput(NamedTuple):
     beam_shape_parameters: Union[Tensor, None] = None
 
 
+class TranslationalInput(NamedTuple):
+    direction: Tensor
+    origin: Tensor
+    spectrum: Tensor
+    translation: Tensor
+    geometry: Union[Tensor, None] = None
+    beam_shape_type: Union[Tensor, None] = None
+    beam_shape_parameters: Union[Tensor, None] = None
+
+
 class PositionalInput(NamedTuple):
     direction: Tensor
     origin: Tensor

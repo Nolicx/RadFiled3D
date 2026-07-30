@@ -262,10 +262,24 @@ class Metadata(object):
                 vx = self._metadata.get_dynamic_metadata("simulation_duration_s")
             vx.set_data(duration_s)
 
+        def _get_patient_translation(self) -> vec3:
+            if "patient_translation" not in self._metadata.get_dynamic_metadata_keys():
+                return None
+            return self._metadata.get_dynamic_metadata("patient_translation").get_data()
+
+        def _set_patient_translation(self, translation: vec3) -> None:
+            assert isinstance(translation, vec3), f"Expected vec3, got {type(translation)}"
+            if "patient_translation" not in self._metadata.get_dynamic_metadata_keys():
+                vx = self._metadata.add_dynamic_metadata("patient_translation", DType.VEC3)
+            else:
+                vx = self._metadata.get_dynamic_metadata("patient_translation")
+            vx.set_data(translation)
+
         primary_particle_count: int = property(_get_primary_particle_count, _set_primary_particle_count)
         geometry: str = property(_get_geometry, _set_geometry)
         physics_list: str = property(_get_physics_list, _set_physics_list)
         simulation_duration_s: int = property(_get_simulation_duration_s, _set_simulation_duration_s)
+        patient_translation: vec3 = property(_get_patient_translation, _set_patient_translation)
         tube: "Metadata.XRayTube"
 
         def __init__(self, geometry: str, primary_particle_count: int, physics_list: str, tube: "Metadata.XRayTube", metadata: RadiationFieldMetadataV1) -> None:
